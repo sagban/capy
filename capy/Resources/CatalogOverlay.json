@@ -1,0 +1,73 @@
+{
+  "note": "Custom / Indian foods + composites. Merged by scripts/build_food_catalog.py onto USDA Foundation+SR Legacy.",
+  "foods": [
+    {
+      "id": "seed_paneer",
+      "name": "Paneer",
+      "family": "dairy",
+      "per100g": { "calories": 265, "proteinG": 18, "carbsG": 1.2, "fatG": 20 },
+      "aliases": ["paneer", "indian cottage cheese"],
+      "source": "overlay"
+    },
+    {
+      "id": "seed_roti",
+      "name": "Roti / chapati",
+      "family": "grain",
+      "per100g": { "calories": 297, "proteinG": 9, "carbsG": 46, "fatG": 7.5 },
+      "aliases": ["roti", "chapati", "chapatti"],
+      "source": "overlay"
+    },
+    {
+      "id": "seed_dal_cooked",
+      "name": "Dal (cooked lentils)",
+      "family": "legume",
+      "per100g": { "calories": 116, "proteinG": 9, "carbsG": 20, "fatG": 0.4 },
+      "aliases": ["dal", "daal", "lentils"],
+      "source": "overlay"
+    },
+    {
+      "id": "seed_protein_powder",
+      "name": "Whey protein powder",
+      "family": "supplement",
+      "per100g": { "calories": 400, "proteinG": 80, "carbsG": 10, "fatG": 3 },
+      "aliases": ["protein powder", "whey"],
+      "source": "overlay"
+    }
+  ],
+  "composites": [
+    {
+      "id": "seed_dal_tadka_bowl",
+      "name": "Dal tadka bowl",
+      "isComposite": true,
+      "components": [
+        { "foodId": "seed_dal_cooked", "grams": 200 },
+        { "foodId": "resolve:Oil, olive, salad or cooking", "grams": 5 }
+      ]
+    },
+    {
+      "id": "seed_chicken_stirfry",
+      "name": "Chicken stir-fry",
+      "isComposite": true,
+      "components": [
+        { "foodId": "resolve:Chicken, broiler or fryers, breast, skinless, boneless, meat only, cooked, braised", "grams": 150 },
+        { "foodId": "resolve:Broccoli, cooked, boiled, drained, without salt", "grams": 100 },
+        { "foodId": "resolve:Oil, olive, salad or cooking", "grams": 8 }
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "tpl_chicken_stirfry",
+      "name": "Chicken stir-fry",
+      "items": [{ "foodId": "seed_chicken_stirfry", "grams": 258 }]
+    },
+    {
+      "id": "tpl_dal_roti",
+      "name": "Dal + roti",
+      "items": [
+        { "foodId": "seed_dal_cooked", "grams": 180 },
+        { "foodId": "seed_roti", "grams": 80 }
+      ]
+    }
+  ]
+}

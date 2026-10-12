@@ -37,9 +37,11 @@ To switch later:
 | Google Sign-In | **Enabled** (Console). Local `GoogleService-Info.plist` includes `CLIENT_ID` / `REVERSED_CLIENT_ID` |
 | Sign in with Apple | Requires Apple Developer key + Firebase Console / Services ID — see [firebase-auth-checklist.md](firebase-auth-checklist.md) |
 
-## Next infra (still manual / Phase 1)
+## Next infra
 
-- [ ] Enable billing if using Vertex AI
-- [ ] Create Secret Manager secrets `GEMINI_API_KEY` / `USDA_FDC_API_KEY`
+- [x] Deploy `interpret_meal` (codebase `capy-harness`, `us-central1`) — Vertex + Secret Manager (2026-10-12)
+- [x] Gemini via **Vertex AI + ADC** (no AI Studio key in Functions)
+- [x] Vertex AI API enabled; `roles/aiplatform.user` on Functions compute SA
+- [x] Secret Manager `USDA_FDC_API_KEY` bound to `interpret_meal` (replace placeholder with real data.gov key)
 - [ ] Complete Apple Sign In credentials in Console
-- [ ] Deploy Functions scaffold when ready
+- Deploy: see [../runbooks/local-dev.md](../runbooks/local-dev.md) + [../runbooks/secrets-and-quotas.md](../runbooks/secrets-and-quotas.md)

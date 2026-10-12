@@ -20,6 +20,13 @@ struct capyApp: App {
                 MealEntry.self,
                 MealEntryItem.self,
                 LibraryItem.self,
+                Food.self,
+                MealTemplate.self,
+                MealTemplateItem.self,
+                SearchCacheEntry.self,
+                ConversationThread.self,
+                ConversationTurn.self,
+                LongTermMemoryNote.self,
             ])
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             do {
@@ -28,7 +35,10 @@ struct capyApp: App {
                 fatalError("Could not create ModelContainer: \(error)")
             }
         }()
-        MealTypeCatalog.seedIfNeeded(in: sharedModelContainer.mainContext)
+        let context = sharedModelContainer.mainContext
+        MealTypeCatalog.seedIfNeeded(in: context)
+        try? SeedImporter.importIfNeeded(into: context)
+        _ = ConversationMemoryStore.thread(in: context)
         _authManager = State(initialValue: AuthManager())
     }
 
@@ -40,7 +50,9 @@ struct capyApp: App {
                     GIDSignIn.sharedInstance.handle(url)
                 }
                 .task {
-                    MealTypeCatalog.seedIfNeeded(in: sharedModelContainer.mainContext)
+                    let context = sharedModelContainer.mainContext
+                    MealTypeCatalog.seedIfNeeded(in: context)
+                    try? SeedImporter.importIfNeeded(into: context)
                 }
         }
         .modelContainer(sharedModelContainer)

@@ -5,10 +5,14 @@
       "codebase": "capy-harness",
       "ignore": [
         "venv",
+        ".venv",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "__pycache__"
+        "__pycache__",
+        "tests",
+        ".env",
+        ".env.*"
       ],
       "runtime": "python312"
     }

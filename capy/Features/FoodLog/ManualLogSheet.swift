@@ -22,12 +22,16 @@ struct ManualLogSheet: View {
         self.initialMealSlot = initialMealSlot
     }
 
-    private var filtered: [LibraryItem] {
+    private var filteredLibrary: [LibraryItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return Array(library.prefix(20)) }
         return library.filter {
             $0.name.lowercased().contains(q) || $0.detail.lowercased().contains(q)
         }
+    }
+
+    private var filteredCatalog: [Food] {
+        SeedImporter.searchFoods(query: query, in: modelContext, limit: 30)
     }
 
     var body: some View {
@@ -47,6 +51,7 @@ struct ManualLogSheet: View {
                 }
                 .onAppear {
                     MealTypeCatalog.seedIfNeeded(in: modelContext)
+                    try? SeedImporter.importIfNeeded(into: modelContext)
                 }
         }
     }
@@ -59,9 +64,36 @@ struct ManualLogSheet: View {
                     .autocorrectionDisabled()
             }
 
-            if !filtered.isEmpty {
+            if !filteredCatalog.isEmpty {
+                Section("Catalog") {
+                    ForEach(filteredCatalog, id: \.id) { food in
+                        Button {
+                            path.append(draft(from: food))
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(food.canonicalName)
+                                        .foregroundStyle(Color.primary)
+                                    Text(food.isComposite ? "Composite" : food.ingredientFamily)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text("\(Int(food.caloriesPer100g)) cal / 100g · P \(Int(food.proteinGPer100g)) · C \(Int(food.carbsGPer100g)) · F \(Int(food.fatGPer100g))")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.capy.textSecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !filteredLibrary.isEmpty {
                 Section("Library") {
-                    ForEach(filtered) { item in
+                    ForEach(filteredLibrary) { item in
                         Button {
                             path.append(draft(from: item))
                         } label: {
@@ -84,9 +116,10 @@ struct ManualLogSheet: View {
                         }
                     }
                 }
-            } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      filteredCatalog.isEmpty {
                 Section {
-                    Text("No library matches")
+                    Text("No catalog or library matches")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -108,6 +141,24 @@ struct ManualLogSheet: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func draft(from food: Food) -> FoodLogDraft {
+        FoodLogDraft(
+            name: food.canonicalName,
+            detail: food.isComposite ? "Composite" : food.ingredientFamily,
+            baseGrams: 100,
+            baseCalories: food.caloriesPer100g,
+            baseProteinG: food.proteinGPer100g,
+            baseCarbsG: food.carbsGPer100g,
+            baseFatG: food.fatGPer100g,
+            grams: 100,
+            day: initialDay,
+            mealSlot: initialMealSlot ?? "",
+            allowMacroEdit: false,
+            foodId: food.id,
+            ingredientFamily: food.ingredientFamily
+        )
     }
 
     private func draft(from item: LibraryItem) -> FoodLogDraft {
@@ -156,6 +207,8 @@ struct FoodLogDraft: Hashable {
     var day: Date
     var mealSlot: String
     var allowMacroEdit: Bool
+    var foodId: String = ""
+    var ingredientFamily: String = ""
 
     private var scale: Double {
         guard baseGrams > 0 else { return 1 }
@@ -181,7 +234,9 @@ struct FoodLogDraft: Hashable {
             grams: grams,
             day: DayKey.date(from: entry.dayKey) ?? Calendar.current.startOfDay(for: .now),
             mealSlot: entry.mealSlot ?? "",
-            allowMacroEdit: true
+            allowMacroEdit: true,
+            foodId: item?.foodId ?? "",
+            ingredientFamily: item?.ingredientFamily ?? ""
         )
     }
 }
@@ -379,7 +434,9 @@ struct LogFoodDetailsView: View {
             calories: draft.calories,
             proteinG: draft.proteinG,
             carbsG: draft.carbsG,
-            fatG: draft.fatG
+            fatG: draft.fatG,
+            foodId: draft.foodId,
+            ingredientFamily: draft.ingredientFamily
         )
 
         if let existingEntry {

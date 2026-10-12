@@ -22,6 +22,9 @@ struct CapyTabView: View {
     @State private var pendingMealSlot = ""
     @State private var speech = SpeechInputController()
     @FocusState private var talkFocused: Bool
+    @State private var showMemory = false
+    @State private var didLoadThread = false
+    @AppStorage("capy.lastConversationDayKey") private var lastConversationDayKey = ""
 
     private var todayKey: String { DayKey.make() }
 
@@ -120,6 +123,14 @@ struct CapyTabView: View {
                         .overlay(Circle().stroke(Color.capy.accentSoft, lineWidth: 1.5))
                         .accessibilityLabel("Capy")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showMemory = true
+                    } label: {
+                        Image(systemName: "brain.head.profile")
+                    }
+                    .accessibilityLabel("Memory")
+                }
                 SettingsToolbarButton()
             }
             .keyboardDoneToolbar()
@@ -136,8 +147,14 @@ struct CapyTabView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .sheet(isPresented: $showMemory) {
+                MemorySheetView()
+            }
             .onAppear {
                 MealTypeCatalog.seedIfNeeded(in: modelContext)
+                try? SeedImporter.importIfNeeded(into: modelContext)
+                loadThreadIfNeeded()
+                handleDayRolloverIfNeeded()
             }
             .onChange(of: speech.transcript) { _, newValue in
                 guard speech.isRecording, !newValue.isEmpty else { return }
@@ -227,6 +244,33 @@ struct CapyTabView: View {
         .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
     }
 
+    private func loadThreadIfNeeded() {
+        guard !didLoadThread else { return }
+        didLoadThread = true
+        let thread = ConversationMemoryStore.thread(in: modelContext)
+        let turns = ConversationMemoryStore.orderedTurns(thread)
+        guard !turns.isEmpty else { return }
+        messages = turns.map { turn in
+            ChatBubble(
+                role: turn.role == .user ? .user : .capy,
+                text: turn.text
+            )
+        }
+    }
+
+    private func handleDayRolloverIfNeeded() {
+        let today = todayKey
+        if !lastConversationDayKey.isEmpty, lastConversationDayKey != today {
+            let priorCount = entries.filter { $0.dayKey == lastConversationDayKey && $0.confirmed }.count
+            ConversationMemoryStore.noteDayRollover(
+                previousDayKey: lastConversationDayKey,
+                mealCount: priorCount,
+                in: modelContext
+            )
+        }
+        lastConversationDayKey = today
+    }
+
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -234,6 +278,7 @@ struct CapyTabView: View {
         talkFocused = false
         Keyboard.dismiss()
         messages.append(ChatBubble(role: .user, text: text))
+        ConversationMemoryStore.appendTurn(role: .user, text: text, in: modelContext)
         draft = ""
         pendingName = text
         pendingCalories = 520
@@ -244,11 +289,14 @@ struct CapyTabView: View {
         pendingMealSlot = MealTypeCatalog.suggestedName(from: mealTypes.filter(\.isEnabled)) ?? ""
         showConfirm = true
         let level = settings.first?.assistanceLevel ?? .fullAssist
+        let reply: String
         if level == .quiet {
-            messages.append(ChatBubble(role: .capy, text: "confirm portions when you’re ready."))
+            reply = "confirm portions when you’re ready."
         } else {
-            messages.append(ChatBubble(role: .capy, text: "got it — confirm the portions and I’ll bank it."))
+            reply = "got it — confirm the portions and I’ll bank it."
         }
+        messages.append(ChatBubble(role: .capy, text: reply))
+        ConversationMemoryStore.appendTurn(role: .assistant, text: reply, in: modelContext)
     }
 
     private func confirmPending() {
@@ -276,14 +324,16 @@ struct CapyTabView: View {
             fatG: eaten.fatG + item.fatG
         ))
         let level = settings.first?.assistanceLevel ?? .fullAssist
-        if level == .quiet {
-            messages.append(ChatBubble(role: .capy, text: "logged. \(Int(left.calories)) left."))
+        let reply: String
+        if DialPolicy.showsBenefitAfterLog(level) {
+            reply = "logged — ~\(Int(item.calories)) cal banked. \(Int(left.calories)) cal left."
+        } else if level == .quiet {
+            reply = "logged. \(Int(left.calories)) left."
         } else {
-            messages.append(ChatBubble(
-                role: .capy,
-                text: "logged — ~\(Int(item.calories)) cal banked. \(Int(left.calories)) cal left."
-            ))
+            reply = "logged. \(Int(left.calories)) cal left."
         }
+        messages.append(ChatBubble(role: .capy, text: reply))
+        ConversationMemoryStore.appendTurn(role: .assistant, text: reply, in: modelContext)
     }
 }
 

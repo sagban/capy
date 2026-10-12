@@ -19,6 +19,9 @@ venv/
 # Backlog seed artifacts
 scripts/.backlog_issue_map.tsv
 
+# USDA raw downloads (regenerate with scripts/build_food_catalog.py)
+scripts/data/usda/
+
 # OS
 .DS_Store
 

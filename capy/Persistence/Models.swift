@@ -260,6 +260,10 @@ final class MealEntryItem {
     var proteinG: Double
     var carbsG: Double
     var fatG: Double
+    /// Catalog food id when known (variety / corrections).
+    var foodId: String = ""
+    /// Ingredient family snapshot for same-day variety hard filter.
+    var ingredientFamily: String = ""
     var entry: MealEntry?
 
     init(
@@ -268,7 +272,9 @@ final class MealEntryItem {
         calories: Double,
         proteinG: Double,
         carbsG: Double,
-        fatG: Double
+        fatG: Double,
+        foodId: String = "",
+        ingredientFamily: String = ""
     ) {
         self.name = name
         self.grams = grams
@@ -276,6 +282,8 @@ final class MealEntryItem {
         self.proteinG = proteinG
         self.carbsG = carbsG
         self.fatG = fatG
+        self.foodId = foodId
+        self.ingredientFamily = ingredientFamily
     }
 }
 

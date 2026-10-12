@@ -18,25 +18,52 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
 
 ```json
 {
-  "utterance": "chipotle bowl, chicken and rice",
+  "utterance": "make the rice half",
   "timezone": "America/Chicago",
-  "dayKey": "2026-10-11",
+  "dayKey": "2026-10-12",
+  "preferenceContext": {
+    "likes": ["high protein"],
+    "dislikes": ["cilantro"],
+    "allergies": ["peanut"],
+    "diets": ["vegetarian"]
+  },
+  "diaryContext": {
+    "today": [],
+    "previousDays": [],
+    "remaining": { "calories": 820, "proteinG": 60, "carbsG": 90, "fatG": 25 },
+    "remainingSource": "clientComputed"
+  },
+  "longTermMemory": [
+    { "id": "mem_1", "text": "Usually eats dinner after 9pm on weekdays" },
+    { "id": "mem_2", "text": "No microwave at work" }
+  ],
+  "conversation": {
+    "summary": "User logging lunch; awaiting portion confirm on rice.",
+    "recentTurns": [
+      { "role": "user", "text": "rice and dal" },
+      { "role": "assistant", "text": "quick check on the rice" }
+    ],
+    "workingMemory": {
+      "pendingIntent": "clarify",
+      "clarifyingQuestion": "Was that about a cup of rice, or half?",
+      "candidates": [
+        { "foodId": "usda_168878", "displayName": "Rice, white, long-grain, regular, enriched, cooked", "grams": null }
+      ]
+    }
+  },
+  "context": { "assistanceLevel": "fullAssist", "lastIntent": "clarify" },
   "memorySnapshot": {
     "preferences": ["high protein"],
     "dislikes": ["cilantro"],
-    "allergies": [],
+    "allergies": ["peanut"],
     "diets": ["vegetarian"],
     "regularTemplateIds": ["tpl_chicken_stirfry"],
-    "recentCorrections": [
-      { "text": "half the rice", "at": "2026-10-11T12:01:00Z" }
-    ]
-  },
-  "context": {
-    "assistanceLevel": "fullAssist",
-    "lastIntent": null
+    "recentCorrections": []
   }
 }
 ```
+
+`memorySnapshot` remains for #37 compatibility; clients should prefer `preferenceContext` + `diaryContext` + `longTermMemory` + `conversation`.
 
 ### Response (success)
 
@@ -45,27 +72,38 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
   "intent": "log_meal",
   "candidates": [
     {
-      "foodId": "seed_chicken_breast",
-      "displayName": "Chicken breast",
+      "foodId": "usda_171140",
+      "displayName": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, cooked, braised",
       "grams": 150,
       "confidence": 0.82
-    },
-    {
-      "foodId": "seed_white_rice_cooked",
-      "displayName": "White rice, cooked",
-      "grams": 200,
-      "confidence": 0.75
     }
   ],
   "clarifyingQuestion": null,
   "correction": null,
   "suggestedTemplateId": null,
   "assistantMessage": "logged — confirm portions?",
+  "warnings": [],
+  "memoryProposals": []
+}
+```
+
+`intent` enum: `log_meal` | `suggest_meal` | `correct_meal` | `clarify` | `update_preference` | `update_memory` | `unknown`
+
+### Response (memory update)
+
+```json
+{
+  "intent": "update_memory",
+  "candidates": [],
+  "assistantMessage": "saved that for later",
+  "memoryProposals": [
+    { "action": "add", "text": "Strength trains on Tuesday evenings" }
+  ],
   "warnings": []
 }
 ```
 
-`intent` enum: `log_meal` | `suggest_meal` | `correct_meal` | `clarify` | `update_preference` | `unknown`
+`memoryProposals.action`: `add` | `update` | `delete`. Client applies automatically; user can edit in Capy Memory sheet.
 
 ### Response (needs clarification)
 
@@ -78,6 +116,19 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
   "warnings": ["ambiguous_portion"]
 }
 ```
+
+## Tools (request-scoped)
+
+| Tool ID | Returns |
+|---------|---------|
+| `get_user_preferences` | likes / dislikes |
+| `get_dietary_restrictions` | allergies + diets |
+| `get_long_term_memory` | durable Muse-style notes |
+| `get_today_food_log` | today's confirmed entries |
+| `get_previous_food_logs` | last N day summaries |
+| `search_food` | catalog / USDA hits + `per100g` |
+| `propose_meal` | template / food+grams candidates |
+| `calc_macros` | **Swift only** (source of truth) |
 
 ## `searchFood`
 
@@ -103,7 +154,7 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
 }
 ```
 
-Note: `per100g` here is **catalog data** from DB/USDA (deterministic), not an LLM invention. The LLM must not invent these fields; the tool fills them after lookup.
+Note: `per100g` here is **catalog data** from DB/USDA (deterministic), not an LLM invention. The LLM must not invent these fields; the tool fills them after lookup. Same-day miss cache: repeated empty queries short-circuit for the day.
 
 ## Error shape
 
@@ -119,4 +170,5 @@ Note: `per100g` here is **catalog data** from DB/USDA (deterministic), not an LL
 1. Decode into Swift Codable DTOs mirroring this doc.
 2. Run `Core` macros on confirmed grams + Food per100g.
 3. Discard any unexpected macro fields from model free text.
-4. Schema changes require updating this file in the same PR.
+4. Pack conversation window (summary + last 12 turns + workingMemory) and long-term memory notes each call.
+5. Schema changes require updating this file in the same PR.

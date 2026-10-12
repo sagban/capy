@@ -50,6 +50,16 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 - Preferences, dislikes, allergies, diets
 - User-editable only (Settings + Library)
 
+### LongTermMemoryNote (Muse-style)
+- Durable freeform facts that may not fit prefs/goals
+- `id`, `text`, `createdAt`, `updatedAt`, `source`: user | agent
+- Editable in Capy **Memory** sheet; agent may propose add/update/delete
+
+### ConversationThread / ConversationTurn
+- Singleton long-running Capy chat
+- Thread: `summary`, `updatedAt`
+- Turn: `role` (user|assistant), `text`, optional `structuredPayload` (working memory)
+
 ### AppSettings
 - Assistance dial: `fullAssist` | `guided` | `quiet`
 - Evening check-in time (Guided)

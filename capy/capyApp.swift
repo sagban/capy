@@ -1,31 +1,38 @@
-//
-//  capyApp.swift
-//  capy
-//
-//  Created by Sagar Bansal on 10/11/26.
-//
-
 import SwiftUI
 import SwiftData
+import FirebaseCore
 
 @main
 struct capyApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    @State private var authManager: AuthManager
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    private let sharedModelContainer: ModelContainer
+
+    init() {
+        FirebaseApp.configure()
+        sharedModelContainer = {
+            let schema = Schema([
+                AppSettings.self,
+                DailyTarget.self,
+                UserPreference.self,
+                MealEntry.self,
+                MealEntryItem.self,
+                LibraryItem.self,
+            ])
+            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            do {
+                return try ModelContainer(for: schema, configurations: [configuration])
+            } catch {
+                fatalError("Could not create ModelContainer: \(error)")
+            }
+        }()
+        _authManager = State(initialValue: AuthManager())
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(authManager)
         }
         .modelContainer(sharedModelContainer)
     }

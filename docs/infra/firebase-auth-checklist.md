@@ -22,6 +22,8 @@ Save as `capy/GoogleService-Info.plist` (gitignored).
 
 ## 3. Sign in with Apple
 
+**Deferred** for now (product decision). Re-open when ready:
+
 Apple Developer:
 
 - [ ] App ID with Sign in with Apple capability
@@ -33,7 +35,7 @@ Firebase:
 - [ ] Enable Apple provider
 - [ ] Paste Apple credentials
 
-iOS app (Phase 2):
+iOS app:
 
 - [ ] Sign in with Apple capability on target
 - [ ] Entitlements file
@@ -41,10 +43,9 @@ iOS app (Phase 2):
 ## 4. Google Sign-In
 
 - [x] Google provider enabled in Firebase Console (`capy-dogfood`)
-- [x] `GoogleService-Info.plist` installed at `capy/GoogleService-Info.plist` (gitignored) with `CLIENT_ID` + `REVERSED_CLIENT_ID`
-- [ ] Reversed client id URL scheme in Xcode (Phase 2):  
-      `com.googleusercontent.apps.322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd`
-- [ ] Google Sign-In SDK + Auth UI (Phase 2)
+- [x] `GoogleService-Info.plist` installed at `capy/GoogleService-Info.plist` (gitignored)
+- [x] Phase 2 Auth UI: Firebase `OAuthProvider(providerID: "google.com")` (native GoogleSignIn SPM deferred — version conflict with Firebase 13)
+- [x] URL scheme / GIDClientID present in `AppInfo.plist` for future native GoogleSignIn SDK
 
 ## 5. Authorized domains
 

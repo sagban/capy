@@ -9,7 +9,8 @@ Phase 0 = infra + documentation only. Feature coding starts Phase 1 ∥ Phase 2 
 
 - Docs/design/rules/seed: **done** (issues #14–#28 closed).
 - Firebase dogfood project: **`capy-dogfood`** with iOS app `sagar.capy`.
-- Remaining open: [#13](https://github.com/sagban/capy/issues/13) (Sign in with Apple; Google is enabled + plist installed).
+- [#13](https://github.com/sagban/capy/issues/13) closed: Google enabled; Apple Sign-In deferred.
+- Phase 2 UI shell shipped (Auth → Onboarding → TabView). Harness wiring remains Phase 1/3.
 - Details: [docs/infra/project.md](docs/infra/project.md)
 
 ## Milestones

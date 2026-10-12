@@ -1,0 +1,5 @@
+{
+  "projects": {
+    "default": "YOUR_GCP_OR_FIREBASE_PROJECT_ID"
+  }
+}

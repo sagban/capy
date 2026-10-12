@@ -1,0 +1,13 @@
+---
+description: SwiftUI conventions for Capy iOS
+globs: "**/*.swift"
+alwaysApply: false
+---
+
+# SwiftUI
+
+- Prefer Observation (`@Observable`) over new `ObservableObject` unless existing code requires Combine.
+- Configure `FirebaseApp.configure()` in `App.init()` before Auth-dependent state.
+- Feature views consume `DesignSystem` palette tokens; do not inline hex.
+- Keep pure nutrition maths in `Core/` with no SwiftUI or network imports.
+- iPhone-first layouts; do not expand multiplatform UI in V1 feature work.

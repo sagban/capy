@@ -21,3 +21,7 @@ scripts/.backlog_issue_map.tsv
 
 # OS
 .DS_Store
+
+firebase-debug.log
+firebase-debug.*.log
+.firebase/

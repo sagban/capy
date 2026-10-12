@@ -4,6 +4,14 @@ Tracked on GitHub: [sagban/capy](https://github.com/sagban/capy)
 
 Phase 0 = infra + documentation only. Feature coding starts Phase 1 ∥ Phase 2 after Phase 0 artifacts exist.
 
+
+## Phase 0 status (2026-10-11)
+
+- Docs/design/rules/seed: **done** (issues #14–#28 closed).
+- Firebase dogfood project: **`capy-dogfood`** with iOS app `sagar.capy`.
+- Remaining open: [#13](https://github.com/sagban/capy/issues/13) (Apple Sign In + confirm Google provider deploy; optional rebind to owner GCP project).
+- Details: [docs/infra/project.md](docs/infra/project.md)
+
 ## Milestones
 
 | Milestone | Due | URL |

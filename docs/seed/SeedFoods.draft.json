@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "note": "Content draft for Phase 0. Importer lands in Phase 1.",
+  "foods": [
+    {"id": "seed_chicken_breast", "name": "Chicken breast, cooked", "family": "poultry", "per100g": {"calories": 165, "proteinG": 31, "carbsG": 0, "fatG": 3.6}, "aliases": ["chicken", "grilled chicken"]},
+    {"id": "seed_eggs", "name": "Egg, whole", "family": "egg", "per100g": {"calories": 143, "proteinG": 13, "carbsG": 0.7, "fatG": 9.5}, "aliases": ["eggs", "whole egg"]},
+    {"id": "seed_egg_whites", "name": "Egg white", "family": "egg", "per100g": {"calories": 52, "proteinG": 11, "carbsG": 0.7, "fatG": 0.2}, "aliases": ["egg whites"]},
+    {"id": "seed_salmon", "name": "Salmon, cooked", "family": "fish", "per100g": {"calories": 206, "proteinG": 22, "carbsG": 0, "fatG": 12}, "aliases": ["salmon"]},
+    {"id": "seed_greek_yogurt", "name": "Greek yogurt, plain", "family": "dairy", "per100g": {"calories": 97, "proteinG": 9, "carbsG": 3.6, "fatG": 5}, "aliases": ["yogurt", "curd", "greek yogurt"]},
+    {"id": "seed_paneer", "name": "Paneer", "family": "dairy", "per100g": {"calories": 265, "proteinG": 18, "carbsG": 1.2, "fatG": 20}, "aliases": ["paneer"]},
+    {"id": "seed_tofu_firm", "name": "Tofu, firm", "family": "soy", "per100g": {"calories": 144, "proteinG": 17, "carbsG": 3, "fatG": 9}, "aliases": ["tofu"]},
+    {"id": "seed_white_rice_cooked", "name": "White rice, cooked", "family": "grain", "per100g": {"calories": 130, "proteinG": 2.7, "carbsG": 28, "fatG": 0.3}, "aliases": ["rice", "white rice"]},
+    {"id": "seed_roti", "name": "Roti / chapati", "family": "grain", "per100g": {"calories": 297, "proteinG": 9, "carbsG": 46, "fatG": 7.5}, "aliases": ["roti", "chapati", "chapatti"]},
+    {"id": "seed_oats", "name": "Oats, dry", "family": "grain", "per100g": {"calories": 389, "proteinG": 17, "carbsG": 66, "fatG": 7}, "aliases": ["oats", "oatmeal"]},
+    {"id": "seed_dal_cooked", "name": "Dal (cooked lentils)", "family": "legume", "per100g": {"calories": 116, "proteinG": 9, "carbsG": 20, "fatG": 0.4}, "aliases": ["dal", "daal", "lentils"]},
+    {"id": "seed_broccoli", "name": "Broccoli, cooked", "family": "veg", "per100g": {"calories": 35, "proteinG": 2.4, "carbsG": 7, "fatG": 0.4}, "aliases": ["broccoli"]},
+    {"id": "seed_banana", "name": "Banana", "family": "fruit", "per100g": {"calories": 89, "proteinG": 1.1, "carbsG": 23, "fatG": 0.3}, "aliases": ["banana"]},
+    {"id": "seed_olive_oil", "name": "Olive oil", "family": "fat", "per100g": {"calories": 884, "proteinG": 0, "carbsG": 0, "fatG": 100}, "aliases": ["olive oil", "oil"]},
+    {"id": "seed_almonds", "name": "Almonds", "family": "nut", "per100g": {"calories": 579, "proteinG": 21, "carbsG": 22, "fatG": 50}, "aliases": ["almonds"]},
+    {"id": "seed_chickpeas", "name": "Chickpeas, cooked", "family": "legume", "per100g": {"calories": 164, "proteinG": 8.9, "carbsG": 27, "fatG": 2.6}, "aliases": ["chickpeas", "chana"]},
+    {"id": "seed_protein_powder", "name": "Whey protein powder", "family": "supplement", "per100g": {"calories": 400, "proteinG": 80, "carbsG": 10, "fatG": 3}, "aliases": ["protein powder", "whey"]}
+  ],
+  "composites": [
+    {
+      "id": "seed_chicken_stirfry",
+      "name": "Chicken stir-fry",
+      "isComposite": true,
+      "components": [
+        {"foodId": "seed_chicken_breast", "grams": 150},
+        {"foodId": "seed_broccoli", "grams": 100},
+        {"foodId": "seed_olive_oil", "grams": 8}
+      ]
+    },
+    {
+      "id": "seed_dal_tadka_bowl",
+      "name": "Dal tadka bowl",
+      "isComposite": true,
+      "components": [
+        {"foodId": "seed_dal_cooked", "grams": 200},
+        {"foodId": "seed_olive_oil", "grams": 5}
+      ]
+    }
+  ],
+  "templates": [
+    {"id": "tpl_chicken_stirfry", "name": "Chicken stir-fry", "items": [{"foodId": "seed_chicken_stirfry", "grams": 258}]},
+    {"id": "tpl_dal_roti", "name": "Dal + roti", "items": [{"foodId": "seed_dal_cooked", "grams": 180}, {"foodId": "seed_roti", "grams": 80}]},
+    {"id": "tpl_greek_yogurt_bowl", "name": "Yogurt bowl", "items": [{"foodId": "seed_greek_yogurt", "grams": 200}, {"foodId": "seed_banana", "grams": 100}, {"foodId": "seed_almonds", "grams": 15}]}
+  ]
+}

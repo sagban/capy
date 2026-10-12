@@ -1,0 +1,33 @@
+---
+description: Cappy product and engineering guardrails
+alwaysApply: true
+---
+
+# Cappy rules
+
+## Product / IA
+
+- Root chrome is a **TabView**: Capy (default) / Food Log / Library.
+- **Settings** is top-trailing toolbar, not a tab.
+- Copy uses doer verbs (logged, fits, left). No coach/motivation/streak-shame language.
+
+## Trust boundary
+
+- The **LLM never owns macro arithmetic**. Only structured intent/food/grams.
+- Displayed calories/PCF come from deterministic Swift `Core` (or verified catalog per100g × grams).
+- Suggestion verifier: calories ≤ remaining; each macro within ±10%; else abstain.
+
+## UI
+
+- Prefer native SwiftUI (`TabView`, `NavigationStack`, `List`, sheets, SF Symbols).
+- Use Apple liquid-glass / system `Material` subtly — no neon glass kits.
+- Colors only from `docs/design/color-palette.md` / `Color.capy.*` assets. No ad-hoc hex in views.
+
+## Secrets
+
+- Never commit API keys, `.env`, or `GoogleService-Info.plist`.
+- Gemini and USDA keys are server-side (Secret Manager) only.
+
+## Docs sync
+
+- Harness/API schema changes must update `docs/architecture/api-contracts.md` (and `harness.md` if graph changes) in the same change.

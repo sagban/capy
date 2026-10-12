@@ -34,7 +34,7 @@ To switch later:
 
 | Provider | Status |
 |----------|--------|
-| Google Sign-In | Enable in [Console → Authentication](https://console.firebase.google.com/project/capy-dogfood/authentication/providers) (CLI auth deploy hit OAuth duplicate errors) |
+| Google Sign-In | **Enabled** (Console). Local `GoogleService-Info.plist` includes `CLIENT_ID` / `REVERSED_CLIENT_ID` |
 | Sign in with Apple | Requires Apple Developer key + Firebase Console / Services ID — see [firebase-auth-checklist.md](firebase-auth-checklist.md) |
 
 ## Next infra (still manual / Phase 1)

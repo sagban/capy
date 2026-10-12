@@ -40,16 +40,11 @@ iOS app (Phase 2):
 
 ## 4. Google Sign-In
 
-CLI `deploy --only auth` hit OAuth client duplicate errors on this project — **enable Google in Console** for now:
-
-1. Open https://console.firebase.google.com/project/capy-dogfood/authentication/providers
-2. Enable **Google**, set support email, save
-
-Then:
-
-- [ ] iOS OAuth client present (auto via Firebase / Google Cloud Console)
-- [ ] Reversed client id URL scheme in Xcode (from `GoogleService-Info.plist` `REVERSED_CLIENT_ID`)
-- [ ] Google Sign-In SDK usage in Auth UI (Phase 2)
+- [x] Google provider enabled in Firebase Console (`capy-dogfood`)
+- [x] `GoogleService-Info.plist` installed at `capy/GoogleService-Info.plist` (gitignored) with `CLIENT_ID` + `REVERSED_CLIENT_ID`
+- [ ] Reversed client id URL scheme in Xcode (Phase 2):  
+      `com.googleusercontent.apps.322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd`
+- [ ] Google Sign-In SDK + Auth UI (Phase 2)
 
 ## 5. Authorized domains
 

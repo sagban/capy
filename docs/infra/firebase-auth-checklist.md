@@ -44,8 +44,8 @@ iOS app:
 
 - [x] Google provider enabled in Firebase Console (`capy-dogfood`)
 - [x] `GoogleService-Info.plist` installed at `capy/GoogleService-Info.plist` (gitignored)
-- [x] Phase 2 Auth UI: Firebase `OAuthProvider(providerID: "google.com")` (native GoogleSignIn SPM deferred — version conflict with Firebase 13)
-- [x] URL scheme / GIDClientID present in `AppInfo.plist` for future native GoogleSignIn SDK
+- [x] Phase 2 Auth UI: native `GoogleSignIn` SDK + `GoogleAuthProvider` (Firebase pinned to 12.x for package compatibility)
+- [x] URL scheme / GIDClientID present in `AppInfo.plist`
 
 ## 5. Authorized domains
 

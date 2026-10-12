@@ -4,7 +4,9 @@ import SwiftData
 struct MealConfirmationSheet: View {
     let name: String
     @Binding var grams: Double
+    var baseGrams: Double = 100
     @Binding var mealSlot: String
+    /// Macro totals for `baseGrams` (from Swift Core × catalog per100g).
     let calories: Double
     let protein: Double
     let carbs: Double
@@ -15,7 +17,10 @@ struct MealConfirmationSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MealType.sortOrder) private var mealTypes: [MealType]
 
-    private var scale: Double { grams / 300 }
+    private var scale: Double {
+        guard baseGrams > 0 else { return 1 }
+        return grams / baseGrams
+    }
 
     private var enabledMealTypes: [MealType] {
         mealTypes.filter(\.isEnabled)

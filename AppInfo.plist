@@ -19,5 +19,16 @@
 	<string>Capy uses the microphone so you can say what you ate.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Capy turns your speech into text so you can log meals hands-free.</string>
+	<key>CAPYEnvironment</key>
+	<string>$(CAPY_ENVIRONMENT)</string>
+	<key>CAPYUseFunctionsEmulator</key>
+	<string>$(CAPY_USE_FUNCTIONS_EMULATOR)</string>
+	<key>FIREBASE_PROJECT_ID</key>
+	<string>$(FIREBASE_PROJECT_ID)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

@@ -1,0 +1,4 @@
+// Shared settings for all Capy environments.
+FIREBASE_PROJECT_ID = capy-dogfood
+FUNCTIONS_REGION = us-central1
+FUNCTIONS_NAME = interpret_meal

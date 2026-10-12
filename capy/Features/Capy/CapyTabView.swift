@@ -14,12 +14,16 @@ struct CapyTabView: View {
     ]
     @State private var showConfirm = false
     @State private var pendingName = ""
+    @State private var pendingFoodId = ""
+    @State private var pendingFamily = ""
     @State private var pendingCalories = 450.0
     @State private var pendingProtein = 30.0
     @State private var pendingCarbs = 40.0
     @State private var pendingFat = 15.0
-    @State private var pendingGrams = 250.0
+    @State private var pendingBaseGrams = 100.0
+    @State private var pendingGrams = 100.0
     @State private var pendingMealSlot = ""
+    @State private var isSending = false
     @State private var speech = SpeechInputController()
     @FocusState private var talkFocused: Bool
     @State private var showMemory = false
@@ -54,7 +58,7 @@ struct CapyTabView: View {
     }
 
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isSending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -138,6 +142,7 @@ struct CapyTabView: View {
                 MealConfirmationSheet(
                     name: pendingName,
                     grams: $pendingGrams,
+                    baseGrams: pendingBaseGrams,
                     mealSlot: $pendingMealSlot,
                     calories: pendingCalories,
                     protein: pendingProtein,
@@ -273,40 +278,117 @@ struct CapyTabView: View {
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isSending else { return }
         speech.stop()
         talkFocused = false
         Keyboard.dismiss()
         messages.append(ChatBubble(role: .user, text: text))
         ConversationMemoryStore.appendTurn(role: .user, text: text, in: modelContext)
         draft = ""
-        pendingName = text
-        pendingCalories = 520
-        pendingProtein = 35
-        pendingCarbs = 48
-        pendingFat = 18
-        pendingGrams = 300
+        isSending = true
+        messages.append(ChatBubble(role: .capy, text: "…"))
+
+        Task {
+            await interpret(utterance: text)
+        }
+    }
+
+    @MainActor
+    private func interpret(utterance: String) async {
+        defer { isSending = false }
+        let request = ContextBuilder.buildInterpretRequest(
+            utterance: utterance,
+            dayKey: todayKey,
+            modelContext: modelContext
+        )
+        do {
+            let response = try await AgentClient.shared.interpretMeal(request)
+            if let proposals = response.memoryProposals, !proposals.isEmpty {
+                LongTermMemoryStore.apply(proposals: proposals, in: modelContext)
+            }
+            let reply = response.assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            let display = reply.isEmpty ? fallbackMessage(for: response) : reply
+            replaceLastCapyMessage(with: display)
+            ConversationMemoryStore.appendTurn(
+                role: .assistant,
+                text: display,
+                structuredPayload: response.structuredPayloadJSON(),
+                in: modelContext
+            )
+            presentConfirmationIfNeeded(response)
+        } catch {
+            let msg = "couldn’t reach the harness (\(EnvironmentConfig.environment.rawValue)). \(error.localizedDescription)"
+            replaceLastCapyMessage(with: msg)
+            ConversationMemoryStore.appendTurn(role: .assistant, text: msg, in: modelContext)
+        }
+    }
+
+    private func fallbackMessage(for response: InterpretMealResponse) -> String {
+        switch response.intent {
+        case .clarify:
+            return response.clarifyingQuestion ?? "quick check?"
+        case .updateMemory:
+            return "saved that for later"
+        case .suggestMeal:
+            return response.candidates.first.map { "fits remaining: \($0.displayName)" } ?? "nothing that fits cleanly"
+        case .logMeal, .correctMeal:
+            return "confirm portions when you’re ready."
+        default:
+            return "not sure what to do with that"
+        }
+    }
+
+    private func replaceLastCapyMessage(with text: String) {
+        if let idx = messages.indices.last, messages[idx].role == .capy {
+            messages[idx] = ChatBubble(id: messages[idx].id, role: .capy, text: text)
+        } else {
+            messages.append(ChatBubble(role: .capy, text: text))
+        }
+    }
+
+    private func presentConfirmationIfNeeded(_ response: InterpretMealResponse) {
+        guard response.intent == .logMeal || response.intent == .correctMeal || response.intent == .suggestMeal else {
+            return
+        }
+        guard let candidate = response.candidates.first else { return }
+        let grams = candidate.grams ?? 100
+        let macros: MacroTotals
+        if let food = fetchFood(id: candidate.foodId) {
+            macros = MacroMath.scale(per100g: food.per100g, grams: grams)
+            pendingFoodId = food.id
+            pendingFamily = food.ingredientFamily
+        } else {
+            // Fail closed on macros: no invented numbers — skip confirm sheet.
+            return
+        }
+        pendingName = candidate.displayName
+        pendingBaseGrams = grams
+        pendingGrams = grams
+        pendingCalories = macros.calories
+        pendingProtein = macros.proteinG
+        pendingCarbs = macros.carbsG
+        pendingFat = macros.fatG
         pendingMealSlot = MealTypeCatalog.suggestedName(from: mealTypes.filter(\.isEnabled)) ?? ""
         showConfirm = true
-        let level = settings.first?.assistanceLevel ?? .fullAssist
-        let reply: String
-        if level == .quiet {
-            reply = "confirm portions when you’re ready."
-        } else {
-            reply = "got it — confirm the portions and I’ll bank it."
-        }
-        messages.append(ChatBubble(role: .capy, text: reply))
-        ConversationMemoryStore.appendTurn(role: .assistant, text: reply, in: modelContext)
+    }
+
+    private func fetchFood(id: String) -> Food? {
+        var descriptor = FetchDescriptor<Food>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
     }
 
     private func confirmPending() {
+        let scale = pendingBaseGrams > 0 ? pendingGrams / pendingBaseGrams : 1
         let item = MealEntryItem(
             name: pendingName,
             grams: pendingGrams,
-            calories: pendingCalories * (pendingGrams / 300),
-            proteinG: pendingProtein * (pendingGrams / 300),
-            carbsG: pendingCarbs * (pendingGrams / 300),
-            fatG: pendingFat * (pendingGrams / 300)
+            calories: pendingCalories * scale,
+            proteinG: pendingProtein * scale,
+            carbsG: pendingCarbs * scale,
+            fatG: pendingFat * scale,
+            foodId: pendingFoodId,
+            ingredientFamily: pendingFamily
         )
         let entry = MealEntry(
             dayKey: todayKey,
@@ -339,7 +421,13 @@ struct CapyTabView: View {
 
 struct ChatBubble: Identifiable {
     enum Role { case capy, user }
-    let id = UUID()
+    let id: UUID
     let role: Role
     let text: String
+
+    init(id: UUID = UUID(), role: Role, text: String) {
+        self.id = id
+        self.role = role
+        self.text = text
+    }
 }

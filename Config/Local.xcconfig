@@ -1,0 +1,12 @@
+#include "Shared.xcconfig"
+
+// Scheme: "capy Local" → Functions emulator + Auth emulator-friendly defaults.
+CAPY_ENVIRONMENT = local
+CAPY_USE_FUNCTIONS_EMULATOR = YES
+CAPY_FUNCTIONS_HOST = 127.0.0.1
+CAPY_FUNCTIONS_PORT = 5001
+
+// Exposed to Info.plist / Swift via generated keys.
+INFOPLIST_KEY_CAPYEnvironment = local
+INFOPLIST_KEY_CAPYUseFunctionsEmulator = YES
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) CAPY_LOCAL

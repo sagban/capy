@@ -2,7 +2,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseCore
 
-/// Thin callable client via HTTPS. Full Capy chat wiring is Phase 3.
+/// Thin callable client. Endpoint selected by `EnvironmentConfig` (Local vs Prod scheme).
 actor AgentClient {
     static let shared = AgentClient()
 
@@ -19,13 +19,16 @@ actor AgentClient {
             throw AgentClientError.unauthenticated
         }
         let token = try await user.getIDToken()
-        let url = try endpointURL()
+        let project = FirebaseApp.app()?.options.projectID
+            ?? EnvironmentConfig.firebaseProjectID
+        guard let url = EnvironmentConfig.interpretMealURL(projectID: project) else {
+            throw AgentClientError.invalidResponse
+        }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = CallableEnvelope(data: request)
-        urlRequest.httpBody = try encoder.encode(body)
+        urlRequest.httpBody = try encoder.encode(CallableEnvelope(data: request))
 
         let (data, response) = try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else {
@@ -37,24 +40,7 @@ actor AgentClient {
         if let envelope = try? decoder.decode(CallableResultEnvelope<InterpretMealResponse>.self, from: data) {
             return envelope.result
         }
-        // Emulator / some gateways return the payload at the root.
         return try decoder.decode(InterpretMealResponse.self, from: data)
-    }
-
-    private func endpointURL() throws -> URL {
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["CAPY_USE_FUNCTIONS_EMULATOR"] == "1" {
-            let project = FirebaseApp.app()?.options.projectID ?? "demo-capy"
-            let path = "http://127.0.0.1:5001/\(project)/us-central1/interpret_meal"
-            guard let url = URL(string: path) else { throw AgentClientError.invalidResponse }
-            return url
-        }
-        #endif
-        let project = FirebaseApp.app()?.options.projectID ?? "capy"
-        guard let url = URL(string: "https://us-central1-\(project).cloudfunctions.net/interpret_meal") else {
-            throw AgentClientError.invalidResponse
-        }
-        return url
     }
 }
 
@@ -66,8 +52,16 @@ private struct CallableResultEnvelope<T: Decodable>: Decodable {
     let result: T
 }
 
-enum AgentClientError: Error {
+enum AgentClientError: Error, LocalizedError {
     case unauthenticated
     case invalidResponse
     case httpStatus(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .unauthenticated: "Sign in required."
+        case .invalidResponse: "Unexpected harness response."
+        case .httpStatus(let code): "Harness error (\(code))."
+        }
+    }
 }

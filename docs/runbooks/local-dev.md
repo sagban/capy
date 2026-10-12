@@ -85,11 +85,28 @@ Production Gemini = **Vertex AI + ADC** (GCP credits). USDA = Secret Manager `US
 
 iOS production builds call `https://us-central1-capy-dogfood.cloudfunctions.net/interpret_meal`. DEBUG + `CAPY_USE_FUNCTIONS_EMULATOR=1` uses the emulator instead.
 
+## iOS schemes (Local vs Prod)
+
+| Scheme | Build configs | Harness |
+|--------|---------------|---------|
+| **capy Local** | `DebugLocal` / `ReleaseLocal` → [`Config/Local.xcconfig`](../../Config/Local.xcconfig) | Functions emulator `127.0.0.1:5001` |
+| **capy Prod** | `DebugProd` / `ReleaseProd` → [`Config/Prod.xcconfig`](../../Config/Prod.xcconfig) | Deployed `interpret_meal` on `capy-dogfood` |
+
+`EnvironmentConfig` reads the active xcconfig (via `CAPY_LOCAL` / Info.plist). Pick the scheme in Xcode’s scheme menu before Run.
+
+Local run checklist:
+
+1. `npx -y firebase-tools@latest emulators:start --only auth,functions`
+2. Xcode scheme → **capy Local**
+3. Sign in (Auth emulator or project Auth as configured)
+
+Prod dogfood: scheme → **capy Prod** (no emulator).
+
 ## iOS
 
 1. Open `capy.xcodeproj`
-2. Ensure bundle id matches Firebase iOS app (`sagar.capy` unless changed)
-3. Add Firebase iOS SDK via SPM when implementing Auth (Phase 2)
+2. Choose **capy Local** or **capy Prod**
+3. Ensure bundle id matches Firebase iOS app (`sagar.capy`)
 4. `FirebaseApp.configure()` in `App.init()` before Auth state objects
 
 ## Auth providers checklist

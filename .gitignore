@@ -1,0 +1,23 @@
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+GoogleService-Info.plist
+**/Secrets.xcconfig
+*.pem
+
+# Python
+__pycache__/
+.venv/
+venv/
+
+# Backlog seed artifacts
+scripts/.backlog_issue_map.tsv
+
+# OS
+.DS_Store

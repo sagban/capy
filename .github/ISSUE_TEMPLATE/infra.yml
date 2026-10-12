@@ -1,0 +1,36 @@
+name: Infra
+description: Cloud, Firebase, auth, secrets, CI
+title: "[Infra] "
+labels: ["infra", "p0"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: resources
+    attributes:
+      label: Cloud / platform resources
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Secrets hygiene
+      options:
+        - label: No API keys committed; Secret Manager / local env only
+          required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true

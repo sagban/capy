@@ -1,0 +1,30 @@
+name: Eval / golden case
+description: Golden set case, dial eval, or ship-gate metric
+title: "[Eval] "
+labels: ["eval", "p0"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [golden-case, dial-policy, ship-gate, accessibility]
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true

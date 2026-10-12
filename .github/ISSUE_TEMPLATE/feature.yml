@@ -1,0 +1,42 @@
+name: Feature
+description: Product or platform feature work
+title: "[Feature] "
+labels: ["p0"]
+body:
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track
+      options: [ui, harness, core-math, data, infra, both]
+    validations:
+      required: true
+  - type: input
+    id: prd
+    attributes:
+      label: PRD ID
+      description: e.g. FR-3 (optional)
+      placeholder: FR-
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable checklist
+    validations:
+      required: true
+  - type: textarea
+    id: deps
+    attributes:
+      label: Dependencies
+      description: blocked by / blocks issue numbers
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true

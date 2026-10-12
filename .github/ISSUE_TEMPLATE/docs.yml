@@ -1,0 +1,30 @@
+name: Docs
+description: Architecture, screens, runbooks, Cursor rules
+title: "[Docs] "
+labels: ["docs", "p0"]
+body:
+  - type: input
+    id: path
+    attributes:
+      label: Doc path
+      description: e.g. docs/architecture/overview.md
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true

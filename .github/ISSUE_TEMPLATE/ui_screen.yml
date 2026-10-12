@@ -1,0 +1,50 @@
+name: UI screen
+description: SwiftUI screen or tab work
+title: "[UI] "
+labels: ["ui", "p0"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Capy tab
+        - Food Log tab
+        - Library tab
+        - Settings
+        - Auth / Onboarding
+        - Shared / shell
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include empty/loading/error and palette/materials usage
+    validations:
+      required: true
+  - type: checkboxes
+    id: design
+    attributes:
+      label: Design rules
+      options:
+        - label: Uses App Color Palette tokens only (no ad-hoc hex)
+          required: true
+        - label: Prefers native SwiftUI + system materials / liquid glass
+          required: true
+  - type: textarea
+    id: deps
+    attributes:
+      label: Dependencies
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true

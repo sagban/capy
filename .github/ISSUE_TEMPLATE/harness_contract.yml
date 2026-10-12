@@ -1,0 +1,39 @@
+name: Harness contract
+description: LangGraph / API schema or tool-boundary change
+title: "[Harness] "
+labels: ["harness", "p0"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: schema
+    attributes:
+      label: Contract / schema change
+      description: Request/response fields, tools, memory snapshot impact
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type: checkboxes
+    id: docs
+    attributes:
+      label: Docs sync
+      options:
+        - label: Update docs/architecture/api-contracts.md (or harness.md)
+          required: true
+        - label: LLM never returns trusted macro numbers
+          required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true

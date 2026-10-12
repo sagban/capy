@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>GIDClientID</key>
-	<string>322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -15,5 +13,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>GIDClientID</key>
+	<string>322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd.apps.googleusercontent.com</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Capy uses the microphone so you can say what you ate.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Capy turns your speech into text so you can log meals hands-free.</string>
 </dict>
 </plist>

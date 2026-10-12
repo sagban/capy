@@ -7,13 +7,23 @@ struct LibraryTabView: View {
 
     @State private var kindFilter: LibraryKind = .meal
     @State private var showEditor = false
+    @State private var searchText = ""
+
+    private var filteredItems: [LibraryItem] {
+        let kindMatched = items.filter { $0.kind == kindFilter }
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return kindMatched }
+        return kindMatched.filter {
+            $0.name.lowercased().contains(q) || $0.detail.lowercased().contains(q)
+        }
+    }
 
     private var aiItems: [LibraryItem] {
-        items.filter { $0.kind == kindFilter && $0.origin == .aiGenerated }
+        filteredItems.filter { $0.origin == .aiGenerated }
     }
 
     private var userItems: [LibraryItem] {
-        items.filter { $0.kind == kindFilter && $0.origin == .user }
+        filteredItems.filter { $0.origin == .user }
     }
 
     var body: some View {
@@ -32,7 +42,7 @@ struct LibraryTabView: View {
 
                     Section("AI-generated") {
                         if aiItems.isEmpty {
-                            Text("none yet")
+                            Text(searchText.isEmpty ? "none yet" : "no matches")
                                 .foregroundStyle(Color.capy.textSecondary)
                         } else {
                             ForEach(aiItems) { item in
@@ -44,8 +54,12 @@ struct LibraryTabView: View {
 
                     Section("Yours") {
                         if userItems.isEmpty {
-                            Text("add a custom \(kindFilter.title.lowercased().dropLast())")
-                                .foregroundStyle(Color.capy.textSecondary)
+                            Text(
+                                searchText.isEmpty
+                                ? "add a custom \(kindFilter.title.lowercased().dropLast())"
+                                : "no matches"
+                            )
+                            .foregroundStyle(Color.capy.textSecondary)
                         } else {
                             ForEach(userItems) { item in
                                 libraryRow(item)
@@ -57,6 +71,7 @@ struct LibraryTabView: View {
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Library")
+            .searchable(text: $searchText, prompt: "Search library")
             .toolbar {
                 SettingsToolbarButton()
                 ToolbarItem(placement: .primaryAction) {
@@ -114,7 +129,6 @@ struct LibraryEditorSheet: View {
 
     @State private var name = ""
     @State private var kind: LibraryKind
-    @State private var origin: LibraryOrigin = .user
     @State private var detail = ""
     @State private var calories = 400.0
     @State private var protein = 30.0
@@ -133,10 +147,6 @@ struct LibraryEditorSheet: View {
                     TextField("Name", text: $name)
                     Picker("Kind", selection: $kind) {
                         ForEach(LibraryKind.allCases) { Text($0.title).tag($0) }
-                    }
-                    Picker("Origin", selection: $origin) {
-                        Text(LibraryOrigin.user.title).tag(LibraryOrigin.user)
-                        Text(LibraryOrigin.aiGenerated.title).tag(LibraryOrigin.aiGenerated)
                     }
                     TextField("Notes", text: $detail)
                 }
@@ -157,10 +167,15 @@ struct LibraryEditorSheet: View {
             }
             .navigationTitle("Add to library")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .keyboardDoneToolbar()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button("Save") {
+                        Keyboard.dismiss()
+                        save()
+                    }
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .fontWeight(.semibold)
                 }
@@ -173,7 +188,7 @@ struct LibraryEditorSheet: View {
             LibraryItem(
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 kind: kind,
-                origin: origin,
+                origin: .user,
                 detail: detail,
                 calories: calories,
                 proteinG: protein,

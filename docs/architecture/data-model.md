@@ -16,8 +16,13 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 ### CompositeIngredient
 - `compositeFood` → `componentFood`, `grams`
 
+### MealType
+- `name`, `sortOrder`, `isEnabled`, `isSystem`
+- Defaults seeded: Breakfast, Lunch, Snacks, Dinner (system — can disable, not delete)
+- User can add custom types; only custom types are deletable
+
 ### MealEntry
-- `timestamp`, `day` (calendar day key), `mealSlot?`
+- `timestamp`, `day` (calendar day key), `mealSlot?` (matches `MealType.name`)
 - `originalUserText?`
 - `confirmed: Bool`
 - Items: `MealEntryItem[]`
@@ -28,6 +33,8 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 
 ### DailyTarget
 - `effectiveDate`, `calories`, `proteinG`, `carbsG`, `fatG`
+- `macroSplit`: `balanced` | `lowCarb` | `highProtein` | `custom`
+- Preset splits compute P/C/F grams from calories in Swift `MacroMath` (never LLM)
 - Target changes **never** rewrite past days
 
 ### MealTemplate (regulars)
@@ -47,6 +54,11 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 - Assistance dial: `fullAssist` | `guided` | `quiet`
 - Evening check-in time (Guided)
 - Onboarding completed flag
+- Units (display only; storage stays kcal + grams):
+  - `energyUnit`: `kcal` | `kilojoule`
+  - `foodMassUnit`: `gram` | `ounce` (settings default; log portion also supports ml / tsp / tbsp / cup / servings)
+  - `bodyMassUnit`: `kilogram` | `pound`
+- Regional: `weekStart`: `system` | `sunday` | `monday` (Food Log calendar); region/number formats follow device locale
 
 ### SearchCache
 - Normalized query, result food ids, day, hit/miss

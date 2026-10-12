@@ -16,6 +16,7 @@ struct capyApp: App {
                 AppSettings.self,
                 DailyTarget.self,
                 UserPreference.self,
+                MealType.self,
                 MealEntry.self,
                 MealEntryItem.self,
                 LibraryItem.self,
@@ -27,6 +28,7 @@ struct capyApp: App {
                 fatalError("Could not create ModelContainer: \(error)")
             }
         }()
+        MealTypeCatalog.seedIfNeeded(in: sharedModelContainer.mainContext)
         _authManager = State(initialValue: AuthManager())
     }
 
@@ -36,6 +38,9 @@ struct capyApp: App {
                 .environment(authManager)
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
+                }
+                .task {
+                    MealTypeCatalog.seedIfNeeded(in: sharedModelContainer.mainContext)
                 }
         }
         .modelContainer(sharedModelContainer)

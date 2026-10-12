@@ -31,22 +31,63 @@ final class AppSettings {
     var assistanceLevelRaw: String
     var guidedCheckInHour: Int
     var guidedCheckInMinute: Int
+    var energyUnitRaw: String = EnergyUnit.kcal.rawValue
+    var foodMassUnitRaw: String = FoodMassUnit.gram.rawValue
+    var bodyMassUnitRaw: String = BodyMassUnit.kilogram.rawValue
+    var weekStartRaw: String = WeekStartPreference.system.rawValue
 
     var assistanceLevel: AssistanceLevel {
         get { AssistanceLevel(rawValue: assistanceLevelRaw) ?? .guided }
         set { assistanceLevelRaw = newValue.rawValue }
     }
 
+    var energyUnit: EnergyUnit {
+        get { EnergyUnit(rawValue: energyUnitRaw) ?? .kcal }
+        set { energyUnitRaw = newValue.rawValue }
+    }
+
+    var foodMassUnit: FoodMassUnit {
+        get { FoodMassUnit(rawValue: foodMassUnitRaw) ?? .gram }
+        set { foodMassUnitRaw = newValue.rawValue }
+    }
+
+    var bodyMassUnit: BodyMassUnit {
+        get { BodyMassUnit(rawValue: bodyMassUnitRaw) ?? .kilogram }
+        set { bodyMassUnitRaw = newValue.rawValue }
+    }
+
+    var weekStart: WeekStartPreference {
+        get { WeekStartPreference(rawValue: weekStartRaw) ?? .system }
+        set { weekStartRaw = newValue.rawValue }
+    }
+
+    var unitPreferences: UnitPreferences {
+        UnitPreferences(
+            energy: energyUnit,
+            foodMass: foodMassUnit,
+            bodyMass: bodyMassUnit,
+            weekStart: weekStart
+        )
+    }
+
     init(
         onboardingCompleted: Bool = false,
         assistanceLevel: AssistanceLevel = .fullAssist,
         guidedCheckInHour: Int = 18,
-        guidedCheckInMinute: Int = 0
+        guidedCheckInMinute: Int = 0,
+        energyUnit: EnergyUnit = .kcal,
+        foodMassUnit: FoodMassUnit = .gram,
+        bodyMassUnit: BodyMassUnit = .kilogram,
+        weekStart: WeekStartPreference = .system
     ) {
         self.onboardingCompleted = onboardingCompleted
         self.assistanceLevelRaw = assistanceLevel.rawValue
         self.guidedCheckInHour = guidedCheckInHour
         self.guidedCheckInMinute = guidedCheckInMinute
+        self.energyUnitRaw = energyUnit.rawValue
+        self.foodMassUnitRaw = foodMassUnit.rawValue
+        self.bodyMassUnitRaw = bodyMassUnit.rawValue
+        self.weekStartRaw = weekStart.rawValue
     }
 }
 
@@ -57,19 +98,28 @@ final class DailyTarget {
     var proteinG: Double
     var carbsG: Double
     var fatG: Double
+    /// Defaults for lightweight migration when older stores lack this field.
+    var splitRaw: String = MacroSplit.balanced.rawValue
+
+    var macroSplit: MacroSplit {
+        get { MacroSplit(rawValue: splitRaw) ?? .custom }
+        set { splitRaw = newValue.rawValue }
+    }
 
     init(
         effectiveDate: Date = Calendar.current.startOfDay(for: .now),
         calories: Double = 2000,
         proteinG: Double = 140,
         carbsG: Double = 200,
-        fatG: Double = 65
+        fatG: Double = 65,
+        macroSplit: MacroSplit = .balanced
     ) {
         self.effectiveDate = effectiveDate
         self.calories = calories
         self.proteinG = proteinG
         self.carbsG = carbsG
         self.fatG = fatG
+        self.splitRaw = macroSplit.rawValue
     }
 }
 
@@ -106,6 +156,67 @@ enum PreferenceKind: String, Codable, CaseIterable, Identifiable {
         case .allergy: "Allergy"
         case .diet: "Diet"
         }
+    }
+}
+
+@Model
+final class MealType {
+    var id: UUID
+    var name: String
+    var sortOrder: Int
+    var isEnabled: Bool
+    /// System defaults (Breakfast…Dinner) can be disabled but not deleted.
+    var isSystem: Bool
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        sortOrder: Int,
+        isEnabled: Bool = true,
+        isSystem: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.sortOrder = sortOrder
+        self.isEnabled = isEnabled
+        self.isSystem = isSystem
+    }
+}
+
+enum MealTypeCatalog {
+    static let defaults: [(name: String, order: Int)] = [
+        ("Breakfast", 0),
+        ("Lunch", 1),
+        ("Snacks", 2),
+        ("Dinner", 3),
+    ]
+
+    static func seedIfNeeded(in context: ModelContext) {
+        let descriptor = FetchDescriptor<MealType>()
+        let existing = (try? context.fetch(descriptor)) ?? []
+        guard existing.isEmpty else { return }
+        for item in defaults {
+            context.insert(
+                MealType(name: item.name, sortOrder: item.order, isEnabled: true, isSystem: true)
+            )
+        }
+    }
+
+    /// Best-effort slot from clock time among currently enabled types.
+    static func suggestedName(from enabled: [MealType], date: Date = .now) -> String? {
+        guard !enabled.isEmpty else { return nil }
+        let hour = Calendar.current.component(.hour, from: date)
+        let preferred: String = switch hour {
+        case 4..<11: "Breakfast"
+        case 11..<15: "Lunch"
+        case 15..<17: "Snacks"
+        case 17..<22: "Dinner"
+        default: "Snacks"
+        }
+        if let match = enabled.first(where: { $0.name == preferred }) {
+            return match.name
+        }
+        return enabled.first?.name
     }
 }
 

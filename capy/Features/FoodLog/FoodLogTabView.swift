@@ -3,17 +3,27 @@ import SwiftData
 
 struct FoodLogTabView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.unitPreferences) private var units
     @Query(sort: \MealEntry.timestamp, order: .reverse) private var entries: [MealEntry]
     @Query(sort: \DailyTarget.effectiveDate, order: .reverse) private var targets: [DailyTarget]
+    @Query(sort: \MealType.sortOrder) private var mealTypes: [MealType]
 
     @State private var selectedDay = Calendar.current.startOfDay(for: .now)
     @State private var showInsights = false
-    @State private var showManualLog = false
+    @State private var logSheet: LogSheetRequest?
+    @State private var editingEntry: MealEntry?
+    @State private var selectedGoalMetric: GoalMetric?
+
+    private let pageInset: CGFloat = 16
 
     private var dayKey: String { DayKey.make(from: selectedDay) }
 
     private var dayEntries: [MealEntry] {
         entries.filter { $0.dayKey == dayKey && $0.confirmed }
+    }
+
+    private var enabledMealTypes: [MealType] {
+        mealTypes.filter(\.isEnabled)
     }
 
     private var target: MacroTotals {
@@ -37,108 +47,190 @@ struct FoodLogTabView: View {
         }
     }
 
-    private var remaining: MacroTotals {
-        MacroTotals.remaining(target: target, eaten: eaten)
+    private var knownSlotNames: Set<String> {
+        Set(enabledMealTypes.map(\.name))
+    }
+
+    private var uncategorizedEntries: [MealEntry] {
+        dayEntries.filter { entry in
+            guard let slot = entry.mealSlot, !slot.isEmpty else { return true }
+            return !knownSlotNames.contains(slot)
+        }
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 CapyScreenBackground()
+                // List keeps native swipe-to-delete; goals stay a clear header row.
                 List {
                     Section {
-                        HStack {
-                            Button {
-                                selectedDay = Calendar.current.date(byAdding: .day, value: -1, to: selectedDay) ?? selectedDay
-                            } label: {
-                                Image(systemName: "chevron.left")
-                            }
-                            Spacer()
-                            Text(selectedDay, format: .dateTime.month().day().year())
-                                .fontWeight(.semibold)
-                            Spacer()
-                            Button {
-                                selectedDay = Calendar.current.date(byAdding: .day, value: 1, to: selectedDay) ?? selectedDay
-                            } label: {
-                                Image(systemName: "chevron.right")
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Goals")
-                                .font(.caption)
-                                .foregroundStyle(Color.capy.textSecondary)
-                            Text("\(Int(eaten.calories)) / \(Int(target.calories)) cal")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(Color.capy.budgetCalories)
-                            Text("P \(Int(eaten.proteinG))/\(Int(target.proteinG)) · C \(Int(eaten.carbsG))/\(Int(target.carbsG)) · F \(Int(eaten.fatG))/\(Int(target.fatG))")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.capy.textSecondary)
-                            if eaten.calories > target.calories {
-                                Text("0 left · over target")
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.capy.warning)
-                            } else {
-                                Text("\(Int(remaining.calories)) cal left")
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.capy.textSecondary)
-                            }
-                        }
-                        .listRowBackground(Color.capy.surface.opacity(0.001))
+                        dayGoalsHeader
+                            // Match meal card width — no extra inset on top of insetGrouped margins.
+                            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                     }
 
-                    Section("Logged") {
-                        if dayEntries.isEmpty {
-                            Text("nothing logged this day yet")
-                                .foregroundStyle(Color.capy.textSecondary)
-                        } else {
-                            ForEach(dayEntries) { entry in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(entry.originalUserText ?? entry.items.first?.name ?? "Meal")
-                                        .font(.headline)
-                                    Text("\(Int(entry.calories)) cal · P \(Int(entry.proteinG)) · C \(Int(entry.carbsG)) · F \(Int(entry.fatG))")
-                                        .font(.subheadline)
-                                        .foregroundStyle(Color.capy.textSecondary)
-                                }
-                            }
-                            .onDelete(perform: delete)
+                    ForEach(enabledMealTypes) { type in
+                        mealSection(
+                            title: type.name,
+                            entries: dayEntries.filter { $0.mealSlot == type.name }
+                        ) {
+                            logSheet = LogSheetRequest(mealSlot: type.name)
+                        }
+                    }
+
+                    if !uncategorizedEntries.isEmpty {
+                        mealSection(title: "Other", entries: uncategorizedEntries) {
+                            logSheet = LogSheetRequest(mealSlot: nil)
                         }
                     }
                 }
+                .listStyle(.insetGrouped)
+                .listSectionSpacing(18)
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .navigationTitle("Food Log")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SettingsToolbarButton()
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Insights") { showInsights = true }
+                    DayNavigator(selectedDay: $selectedDay, compact: true)
                 }
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        showManualLog = true
+                        showInsights = true
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "chart.bar.xaxis")
                     }
-                    .accessibilityLabel("Add food")
+                    .accessibilityLabel("Insights")
+
+                    NavigationLink {
+                        SettingsRootView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $showInsights) {
                 InsightsSheet(entries: entries, targetCalories: target.calories)
                     .presentationDetents([.medium])
             }
-            .sheet(isPresented: $showManualLog) {
-                ManualLogSheet(dayKey: dayKey)
-                    .presentationDetents([.medium, .large])
+            .sheet(item: $logSheet) { request in
+                ManualLogSheet(initialDay: selectedDay, initialMealSlot: request.mealSlot)
+                    .presentationDetents([.large])
+            }
+            .sheet(item: $editingEntry) { entry in
+                EditMealEntrySheet(entry: entry)
+                    .presentationDetents([.large])
+            }
+            .sheet(item: $selectedGoalMetric) { metric in
+                GoalDetailView(metric: metric)
+                    .presentationDetents([.large])
+            }
+            .onAppear {
+                MealTypeCatalog.seedIfNeeded(in: modelContext)
             }
         }
     }
 
-    private func delete(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(dayEntries[index])
+    private var dayGoalsHeader: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Goals")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.capy.textSecondary)
+
+            GoalsGridView(eaten: eaten, target: target) { metric in
+                selectedGoalMetric = metric
+            }
+        }
+        .padding(.horizontal, pageInset)
+    }
+
+    @ViewBuilder
+    private func mealSection(
+        title: String,
+        entries: [MealEntry],
+        onAdd: @escaping () -> Void
+    ) -> some View {
+        Section {
+            ForEach(entries) { entry in
+                Button {
+                    editingEntry = entry
+                } label: {
+                    mealRow(entry)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 12, leading: pageInset, bottom: 12, trailing: pageInset))
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button("Delete", role: .destructive) {
+                        modelContext.delete(entry)
+                    }
+                }
+            }
+
+            Button(action: onAdd) {
+                HStack(spacing: 10) {
+                    Image(systemName: "plus")
+                        .font(.body.weight(.semibold))
+                    Text("Add to \(title)")
+                        .font(.body.weight(.medium))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Color.capy.accent)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets(top: 14, leading: pageInset, bottom: 14, trailing: pageInset))
+            .accessibilityLabel("Add to \(title)")
+        } header: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.capy.textSecondary)
+                .textCase(nil)
         }
     }
+
+    @ViewBuilder
+    private func mealRow(_ entry: MealEntry) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.originalUserText ?? entry.items.first?.name ?? "Meal")
+                .font(.headline)
+                .foregroundStyle(Color.capy.textPrimary)
+            let itemLine = entry.items.map(\.name).joined(separator: " · ")
+            if !itemLine.isEmpty, itemLine != (entry.originalUserText ?? "") {
+                Text(itemLine)
+                    .font(.caption)
+                    .foregroundStyle(Color.capy.textSecondary)
+                    .lineLimit(1)
+            }
+            HStack(spacing: 10) {
+                macroBadge("flame.fill", units.formattedEnergy(entry.calories), Color.capy.budgetCalories)
+                macroBadge("circle.fill", "C \(Int(entry.carbsG))", Color.capy.budgetCarbs)
+                macroBadge("circle.fill", "F \(Int(entry.fatG))", Color.capy.budgetFat)
+                macroBadge("circle.fill", "P \(Int(entry.proteinG))", Color.capy.budgetProtein)
+            }
+        }
+    }
+
+    private func macroBadge(_ systemName: String, _ text: String, _ color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemName)
+                .font(.caption2)
+                .foregroundStyle(color)
+            Text(text)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.capy.textSecondary)
+        }
+    }
+}
+
+private struct LogSheetRequest: Identifiable {
+    let id = UUID()
+    let mealSlot: String?
 }
 
 struct InsightsSheet: View {

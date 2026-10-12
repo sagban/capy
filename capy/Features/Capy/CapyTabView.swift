@@ -6,6 +6,7 @@ struct CapyTabView: View {
     @Query(sort: \DailyTarget.effectiveDate, order: .reverse) private var targets: [DailyTarget]
     @Query private var entries: [MealEntry]
     @Query private var settings: [AppSettings]
+    @Query(sort: \MealType.sortOrder) private var mealTypes: [MealType]
 
     @State private var draft = ""
     @State private var messages: [ChatBubble] = [
@@ -18,14 +19,9 @@ struct CapyTabView: View {
     @State private var pendingCarbs = 40.0
     @State private var pendingFat = 15.0
     @State private var pendingGrams = 250.0
-    @State private var pickIndex = 0
-    @State private var abstained = false
-
-    private let samplePicks = [
-        SamplePick(name: "Chicken stir-fry", calories: 420, protein: 42, carbs: 18, fat: 18, reasons: ["fits with room", "no repeat from today"]),
-        SamplePick(name: "Greek yogurt bowl", calories: 380, protein: 28, carbs: 42, fat: 12, reasons: ["fits budget", "uses a regular"]),
-        SamplePick(name: "Dal + roti", calories: 460, protein: 22, carbs: 62, fat: 12, reasons: ["fits", "variety ok"]),
-    ]
+    @State private var pendingMealSlot = ""
+    @State private var speech = SpeechInputController()
+    @FocusState private var talkFocused: Bool
 
     private var todayKey: String { DayKey.make() }
 
@@ -54,74 +50,84 @@ struct CapyTabView: View {
         }
     }
 
-    private var remaining: MacroTotals {
-        MacroTotals.remaining(target: target, eaten: eaten)
-    }
-
-    private var overTarget: Bool {
-        eaten.calories > target.calories
-    }
-
-    private var currentPick: SamplePick {
-        samplePicks[pickIndex % samplePicks.count]
+    private var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 CapyScreenBackground()
-                VStack(spacing: 12) {
-                    BudgetBarView(remaining: remaining, target: target, overTarget: overTarget)
-                        .padding(.horizontal)
-
-                    if abstained {
-                        GlassPanel {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("nothing in your regulars fits cleanly")
-                                    .font(.headline)
-                                    .foregroundStyle(Color.capy.textPrimary)
-                                Text("want a smaller snack instead, or log what you have?")
-                                    .foregroundStyle(Color.capy.textSecondary)
-                            }
-                        }
-                        .padding(.horizontal)
-                    } else {
-                        pickCard
-                            .padding(.horizontal)
+                    .onTapGesture {
+                        talkFocused = false
+                        Keyboard.dismiss()
                     }
 
+                ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
                             ForEach(messages) { message in
-                                HStack {
-                                    if message.role == .user { Spacer(minLength: 40) }
-                                    Text(message.text)
-                                        .padding(12)
-                                        .background(
-                                            message.role == .capy
-                                            ? Color.capy.accentSoft.opacity(0.7)
-                                            : Color.capy.surfaceElevated.opacity(0.9),
-                                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        )
-                                        .foregroundStyle(Color.capy.textPrimary)
-                                    if message.role == .capy { Spacer(minLength: 40) }
-                                }
+                                chatBubble(message)
+                                    .id(message.id)
                             }
                         }
                         .padding(.horizontal)
+                        .padding(.top, 12)
+                        .padding(.bottom, 16)
                     }
-
-                    talkBox
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onTapGesture {
+                        talkFocused = false
+                        Keyboard.dismiss()
+                    }
+                    .onChange(of: messages.count) { _, _ in
+                        if let last = messages.last?.id {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(last, anchor: .bottom)
+                            }
+                        }
+                    }
                 }
             }
-            .navigationTitle("Capy")
-            .toolbar { SettingsToolbarButton() }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 6) {
+                    if let error = speech.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Color.capy.warning)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+                    }
+                    talkBox
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
+                }
+                .background(
+                    Color.capy.background
+                        .shadow(color: Color.black.opacity(0.06), radius: 10, y: -4)
+                        .ignoresSafeArea(edges: .bottom)
+                )
+            }
+            .toolbarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Image("CapyAvatar")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.capy.accentSoft, lineWidth: 1.5))
+                        .accessibilityLabel("Capy")
+                }
+                SettingsToolbarButton()
+            }
+            .keyboardDoneToolbar()
             .sheet(isPresented: $showConfirm) {
                 MealConfirmationSheet(
                     name: pendingName,
                     grams: $pendingGrams,
+                    mealSlot: $pendingMealSlot,
                     calories: pendingCalories,
                     protein: pendingProtein,
                     carbs: pendingCarbs,
@@ -130,60 +136,103 @@ struct CapyTabView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .onAppear {
+                MealTypeCatalog.seedIfNeeded(in: modelContext)
+            }
+            .onChange(of: speech.transcript) { _, newValue in
+                guard speech.isRecording, !newValue.isEmpty else { return }
+                draft = newValue
+            }
+            .onChange(of: speech.isRecording) { wasRecording, isRecording in
+                if wasRecording && !isRecording {
+                    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        talkFocused = false
+                    }
+                }
+            }
+            .onDisappear {
+                speech.stop()
+            }
         }
     }
 
-    private var pickCard: some View {
-        GlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(currentPick.name)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.capy.textPrimary)
-                Text("\(Int(currentPick.calories)) cal · P \(Int(currentPick.protein)) · C \(Int(currentPick.carbs)) · F \(Int(currentPick.fat))")
-                    .foregroundStyle(Color.capy.textSecondary)
-                HStack {
-                    ForEach(currentPick.reasons, id: \.self) { reason in
-                        Text(reason)
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.capy.accentSoft, in: Capsule())
-                    }
-                }
-                HStack {
-                    Button("Log it") { logPick() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.capy.accent)
-                    Button("Swap") { swapPick() }
-                        .buttonStyle(.bordered)
-                    Button("Not this") { abstained = true }
-                        .buttonStyle(.bordered)
-                }
-            }
+    private func chatBubble(_ message: ChatBubble) -> some View {
+        HStack {
+            if message.role == .user { Spacer(minLength: 48) }
+            Text(message.text)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    message.role == .capy
+                    ? Color.capy.surfaceElevated
+                    : Color.capy.accent,
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .foregroundStyle(
+                    message.role == .capy
+                    ? Color.capy.textPrimary
+                    : Color.white
+                )
+            if message.role == .capy { Spacer(minLength: 48) }
         }
     }
 
     private var talkBox: some View {
-        HStack(spacing: 10) {
-            TextField("tell Capy what you ate…", text: $draft, axis: .vertical)
+        HStack(spacing: 8) {
+            TextField("Message Capy…", text: $draft, axis: .vertical)
                 .lineLimit(1...4)
-                .padding(12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            Button {
-                send()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(Color.capy.accent)
+                .focused($talkFocused)
+                .submitLabel(.send)
+                .foregroundStyle(Color.capy.textPrimary)
+                .onSubmit {
+                    if canSend { send() }
+                }
+
+            if canSend {
+                Button {
+                    send()
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(Color.capy.accent)
+                }
+                .accessibilityLabel("Send")
+            } else {
+                Button {
+                    talkFocused = false
+                    Keyboard.dismiss()
+                    speech.toggle()
+                } label: {
+                    Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(speech.isRecording ? Color.capy.budgetCalories : Color.capy.textPrimary)
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel(speech.isRecording ? "Stop listening" : "Speak to Capy")
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityLabel("Send")
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.capy.surfaceElevated, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(
+                    speech.isRecording
+                    ? Color.capy.budgetCalories.opacity(0.75)
+                    : Color.capy.textSecondary.opacity(0.18),
+                    lineWidth: speech.isRecording ? 1.5 : 1
+                )
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
     }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        speech.stop()
+        talkFocused = false
+        Keyboard.dismiss()
         messages.append(ChatBubble(role: .user, text: text))
         draft = ""
         pendingName = text
@@ -192,6 +241,7 @@ struct CapyTabView: View {
         pendingCarbs = 48
         pendingFat = 18
         pendingGrams = 300
+        pendingMealSlot = MealTypeCatalog.suggestedName(from: mealTypes.filter(\.isEnabled)) ?? ""
         showConfirm = true
         let level = settings.first?.assistanceLevel ?? .fullAssist
         if level == .quiet {
@@ -212,13 +262,13 @@ struct CapyTabView: View {
         )
         let entry = MealEntry(
             dayKey: todayKey,
+            mealSlot: pendingMealSlot.isEmpty ? nil : pendingMealSlot,
             originalUserText: pendingName,
             confirmed: true,
             items: [item]
         )
         modelContext.insert(entry)
         showConfirm = false
-        abstained = false
         let left = MacroTotals.remaining(target: target, eaten: MacroTotals(
             calories: eaten.calories + item.calories,
             proteinG: eaten.proteinG + item.proteinG,
@@ -231,25 +281,9 @@ struct CapyTabView: View {
         } else {
             messages.append(ChatBubble(
                 role: .capy,
-                text: "logged — ~\(Int(item.calories)) cal banked. \(Int(left.calories)) cal left. dinner pick still fits."
+                text: "logged — ~\(Int(item.calories)) cal banked. \(Int(left.calories)) cal left."
             ))
         }
-    }
-
-    private func logPick() {
-        pendingName = currentPick.name
-        pendingCalories = currentPick.calories
-        pendingProtein = currentPick.protein
-        pendingCarbs = currentPick.carbs
-        pendingFat = currentPick.fat
-        pendingGrams = 300
-        showConfirm = true
-    }
-
-    private func swapPick() {
-        abstained = false
-        pickIndex += 1
-        messages.append(ChatBubble(role: .capy, text: "swapped — try \(currentPick.name)."))
     }
 }
 
@@ -258,13 +292,4 @@ struct ChatBubble: Identifiable {
     let id = UUID()
     let role: Role
     let text: String
-}
-
-struct SamplePick {
-    let name: String
-    let calories: Double
-    let protein: Double
-    let carbs: Double
-    let fat: Double
-    let reasons: [String]
 }

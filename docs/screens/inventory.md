@@ -1,6 +1,6 @@
 # Screen inventory
 
-Locked IA: **TabView** — Capy (default) / Food Log / Library; **Settings** via top-trailing gear.
+Locked IA: **TabView** — Food Log (default) / Capy / Library; **Settings** via top-trailing gear.
 
 ## Insights (V1 scope decision)
 
@@ -28,12 +28,22 @@ Locked IA: **TabView** — Capy (default) / Food Log / Library; **Settings** via
 | **States** | Form validation |
 | **PRD** | FR-8 seed |
 
+## Tab: Food Log
+
+| | |
+|--|--|
+| **Purpose** | Day navigator (‹ Today › + calendar), goals, meal list, Insights |
+| **Entry** | Default tab |
+| **Exit** | Goal metric detail (Day/Week/Month charts); Edit entry sheet; manual add; Insights sheet; Settings |
+| **States** | Empty day, loading, over-budget factual note |
+| **PRD** | FR-8 |
+
 ## Tab: Capy (AI)
 
 | | |
 |--|--|
 | **Purpose** | Remaining budget, one verified pick + reasons, talk box |
-| **Entry** | Default tab |
+| **Entry** | Tab 2 |
 | **Exit** | Confirmation sheet; Log/Swap/Not this; Settings |
 | **States** | Empty (no pick), loading interpret, offline, abstention, error |
 | **PRD** | Core experience; FR-1, FR-3, FR-7 |
@@ -43,16 +53,6 @@ Locked IA: **TabView** — Capy (default) / Food Log / Library; **Settings** via
 1. **Activation:** ask → answer → bookkeep (confirm) → payback (budget / pick)
 2. **Correction:** “half the rice” → recompute → show delta
 3. **Suggest:** Log it / Swap it / Not this (Swap re-runs verified search)
-
-## Tab: Food Log
-
-| | |
-|--|--|
-| **Purpose** | Goals strip, day switcher, meal list, Insights |
-| **Entry** | Tab 2 |
-| **Exit** | Edit entry sheet; manual add; Insights sheet; Settings |
-| **States** | Empty day, loading, over-budget factual note |
-| **PRD** | FR-8 |
 
 ## Tab: Library
 
@@ -68,7 +68,9 @@ Locked IA: **TabView** — Capy (default) / Food Log / Library; **Settings** via
 
 | Section | Content |
 |---------|---------|
-| Goals | Daily calorie + PCF |
+| Regional & units (General) | Week start; energy / food / body units |
+| Goals | Daily calorie + PCF + macro split |
+| Meal types | Enable/disable defaults; add custom |
 | Food preferences | Likes / dislikes / allergies (explicit) |
 | Diets | Diet tags |
 | Capy Settings | Assistance dial + Guided check-in time |

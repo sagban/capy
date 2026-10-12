@@ -4,7 +4,7 @@ Pre-declared tokens. **No ad-hoc hex in SwiftUI views.** Use `Color.capy.*` (ass
 
 ## Brand direction
 
-Calm, earthy, unbothered capybara — warm neutrals + a single moss/teal accent. Avoid purple AI clichés, neon glow, and cream+terracotta “AI landing page” tropes.
+Warm neutrals + a bright moss accent. Macro rings (calories / P / C / F) use saturated, easy-to-scan hues — not muted pastels. Avoid purple AI clichés, neon glow stacks, and cream+terracotta “AI landing page” tropes.
 
 ## Tokens
 
@@ -15,14 +15,14 @@ Calm, earthy, unbothered capybara — warm neutrals + a single moss/teal accent.
 | `capy.surfaceElevated` | Sheets / pick card base | `#FFFFFF` | `#342F2A` |
 | `capy.textPrimary` | Titles, numbers | `#1F1B16` | `#F5F0E8` |
 | `capy.textSecondary` | Supporting | `#6B645A` | `#B8B0A4` |
-| `capy.accent` | Primary CTA / brand | `#3F6F5A` | `#7FB89A` |
-| `capy.accentSoft` | Chips / soft fill | `#D7E8DE` | `#2F4A3C` |
-| `capy.warning` | Over-budget factual note | `#A15C2D` | `#E0A06A` |
+| `capy.accent` | Primary CTA / brand | `#1FA971` | `#3DDC97` |
+| `capy.accentSoft` | Chips / soft fill | `#C6F0DC` | `#1A4A35` |
+| `capy.warning` | Over-budget factual note | `#E67E22` | `#FFB020` |
 | `capy.separator` | Hairlines if needed | use `Color(.separator)` | same |
-| `capy.budgetCalories` | Calorie emphasis | `#3F6F5A` | `#7FB89A` |
-| `capy.budgetProtein` | Protein | `#3D5A80` | `#8FB4D9` |
-| `capy.budgetCarbs` | Carbs | `#8A6A3D` | `#D2B48C` |
-| `capy.budgetFat` | Fat | `#7A4E6D` | `#C49BB3` |
+| `capy.budgetCalories` | Calorie emphasis | `#FF4D3A` | `#FF6B5A` |
+| `capy.budgetProtein` | Protein | `#22C55E` | `#4ADE80` |
+| `capy.budgetCarbs` | Carbs | `#2B7FFF` | `#5CA3FF` |
+| `capy.budgetFat` | Fat | `#F5A524` | `#FFC14D` |
 
 Accent in Xcode: map `AccentColor` → `capy.accent`.
 
@@ -38,4 +38,5 @@ Accent in Xcode: map `AccentColor` → `capy.accent`.
 1. Text → `capy.textPrimary` / `capy.textSecondary` (or `.primary` / `.secondary` when equivalent)
 2. CTAs → `capy.accent`
 3. Reason chips → `capy.accentSoft` fill + `capy.textPrimary`
-4. Never hardcode `#RRGGBB` in feature views
+4. Macro badges / goal rings → `capy.budget*` (keep saturated — don’t mute in views)
+5. Never hardcode `#RRGGBB` in feature views

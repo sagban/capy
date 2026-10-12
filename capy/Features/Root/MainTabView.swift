@@ -5,11 +5,11 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            Tab("Capy", systemImage: "bubble.left.and.bubble.right", value: 0) {
-                CapyTabView()
-            }
-            Tab("Food Log", systemImage: "list.bullet.clipboard", value: 1) {
+            Tab("Food Log", systemImage: "list.bullet.clipboard", value: 0) {
                 FoodLogTabView()
+            }
+            Tab("Capy", systemImage: "bubble.left.and.bubble.right", value: 1) {
+                CapyTabView()
             }
             Tab("Library", systemImage: "books.vertical", value: 2) {
                 LibraryTabView()

@@ -6,12 +6,13 @@ struct OnboardingView: View {
     @Query private var settings: [AppSettings]
 
     @State private var calories = 2000.0
-    @State private var protein = 140.0
+    @State private var protein = 150.0
     @State private var carbs = 200.0
-    @State private var fat = 65.0
+    @State private var fat = 67.0
+    @State private var split: MacroSplit = .balanced
     @State private var dial: AssistanceLevel = .fullAssist
-    @State private var diet = ""
-    @State private var preference = ""
+    @State private var selectedDiets: Set<String> = []
+    @State private var selectedLikes: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -20,9 +21,28 @@ struct OnboardingView: View {
                 Form {
                     Section("Daily goals") {
                         goalStepper("Calories", value: $calories, step: 50)
-                        goalStepper("Protein (g)", value: $protein, step: 5)
-                        goalStepper("Carbs (g)", value: $carbs, step: 5)
-                        goalStepper("Fat (g)", value: $fat, step: 5)
+                            .onChange(of: calories) { _, _ in applySplitIfNeeded() }
+
+                        Picker("Macro split", selection: $split) {
+                            ForEach(MacroSplit.allCases) { option in
+                                Text(option.title).tag(option)
+                            }
+                        }
+                        .onChange(of: split) { _, _ in applySplitIfNeeded() }
+
+                        Text(split.subtitle)
+                            .font(.footnote)
+                            .foregroundStyle(Color.capy.textSecondary)
+
+                        if split == .custom {
+                            goalStepper("Protein (g)", value: $protein, step: 5)
+                            goalStepper("Carbs (g)", value: $carbs, step: 5)
+                            goalStepper("Fat (g)", value: $fat, step: 5)
+                        } else {
+                            LabeledContent("Protein", value: "\(Int(protein)) g")
+                            LabeledContent("Carbs", value: "\(Int(carbs)) g")
+                            LabeledContent("Fat", value: "\(Int(fat)) g")
+                        }
                     }
 
                     Section("Capy settings") {
@@ -36,9 +56,16 @@ struct OnboardingView: View {
                             .foregroundStyle(Color.capy.textSecondary)
                     }
 
-                    Section("Starter preferences (optional)") {
-                        TextField("Diet tag (e.g. vegetarian)", text: $diet)
-                        TextField("Food preference", text: $preference)
+                    Section("Diets (optional)") {
+                        ForEach(PreferenceCatalog.diets, id: \.self) { option in
+                            selectRow(option, in: $selectedDiets)
+                        }
+                    }
+
+                    Section("Food preferences (optional)") {
+                        ForEach(PreferenceCatalog.likes, id: \.self) { option in
+                            selectRow(option, in: $selectedLikes)
+                        }
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -48,6 +75,28 @@ struct OnboardingView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Start") { complete() }
                         .fontWeight(.semibold)
+                }
+            }
+            .onAppear { applySplitIfNeeded() }
+        }
+    }
+
+    private func selectRow(_ option: String, in selection: Binding<Set<String>>) -> some View {
+        Button {
+            if selection.wrappedValue.contains(option) {
+                selection.wrappedValue.remove(option)
+            } else {
+                selection.wrappedValue.insert(option)
+            }
+        } label: {
+            HStack {
+                Text(option)
+                    .foregroundStyle(Color.primary)
+                Spacer()
+                if selection.wrappedValue.contains(option) {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.capy.accent)
                 }
             }
         }
@@ -64,7 +113,15 @@ struct OnboardingView: View {
         }
     }
 
+    private func applySplitIfNeeded() {
+        guard let computed = MacroMath.macros(calories: calories, split: split) else { return }
+        protein = computed.proteinG
+        carbs = computed.carbsG
+        fat = computed.fatG
+    }
+
     private func complete() {
+        applySplitIfNeeded()
         let appSettings = settings.first ?? AppSettings()
         if settings.isEmpty {
             modelContext.insert(appSettings)
@@ -78,15 +135,16 @@ struct OnboardingView: View {
                 calories: calories,
                 proteinG: protein,
                 carbsG: carbs,
-                fatG: fat
+                fatG: fat,
+                macroSplit: split
             )
         )
 
-        if !diet.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            modelContext.insert(UserPreference(kind: .diet, value: diet.trimmingCharacters(in: .whitespacesAndNewlines)))
+        for diet in selectedDiets.sorted() {
+            modelContext.insert(UserPreference(kind: .diet, value: diet))
         }
-        if !preference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            modelContext.insert(UserPreference(kind: .like, value: preference.trimmingCharacters(in: .whitespacesAndNewlines)))
+        for like in selectedLikes.sorted() {
+            modelContext.insert(UserPreference(kind: .like, value: like))
         }
     }
 }

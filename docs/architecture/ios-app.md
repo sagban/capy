@@ -11,11 +11,12 @@
 
 ```text
 Auth → Onboarding (first run) → Main TabView
-                                      ├─ Tab 1: Capy (AI)     [default]
-                                      ├─ Tab 2: Food Log
+                                      ├─ Tab 1: Food Log      [default]
+                                      ├─ Tab 2: Capy (AI)
                                       └─ Tab 3: Library
                                  Settings (top-right toolbar) → stack
 ```
+
 
 Settings is **not** a tab. Use `NavigationStack` per tab; gear in `.toolbar` trailing.
 

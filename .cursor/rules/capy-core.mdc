@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Product / IA
 
-- Root chrome is a **TabView**: Capy (default) / Food Log / Library.
+- Root chrome is a **TabView**: Food Log (default) / Capy / Library.
 - **Settings** is top-trailing toolbar, not a tab.
 - Copy uses doer verbs (logged, fits, left). No coach/motivation/streak-shame language.
 

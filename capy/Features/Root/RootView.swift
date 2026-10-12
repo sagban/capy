@@ -9,6 +9,10 @@ struct RootView: View {
         settings.first?.onboardingCompleted == true
     }
 
+    private var unitPreferences: UnitPreferences {
+        settings.first?.unitPreferences ?? .default
+    }
+
     var body: some View {
         Group {
             if !auth.isSignedIn {
@@ -19,6 +23,7 @@ struct RootView: View {
                 MainTabView()
             }
         }
+        .environment(\.unitPreferences, unitPreferences)
         .animation(.easeInOut(duration: 0.2), value: auth.isSignedIn)
         .animation(.easeInOut(duration: 0.2), value: onboardingCompleted)
     }

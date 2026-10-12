@@ -5,7 +5,7 @@ Cappy is an iPhone calorie tracker with an agent front door. **Deterministic Swi
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │  iOS app (SwiftUI + SwiftData)                              │
-│  TabView: Capy | Food Log | Library  +  Settings (toolbar)  │
+│  TabView: Food Log | Capy | Library  +  Settings (toolbar)  │
 │                                                             │
 │  ┌──────────────┐  ┌─────────────────┐  ┌───────────────┐ │
 │  │ AgentClient  │  │ Deterministic   │  │ Local store   │ │

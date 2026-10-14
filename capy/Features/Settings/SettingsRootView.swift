@@ -5,6 +5,7 @@ struct SettingsRootView: View {
     var body: some View {
         List {
             Section("General") {
+                NavigationLink("User Profile") { UserDetailsView() }
                 NavigationLink("Regional & units") { GeneralSettingsView() }
             }
             Section("Nutrition") {
@@ -15,7 +16,7 @@ struct SettingsRootView: View {
             }
             Section("Capy") {
                 NavigationLink("Capy Settings") { CapySettingsView() }
-                NavigationLink("User details") { UserDetailsView() }
+                NavigationLink("Memory") { MemorySheetView(embedsNavigation: false) }
             }
         }
         .navigationTitle("Settings")

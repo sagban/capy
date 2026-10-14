@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - Shared enums (api-contracts)
+
 enum MealIntent: String, Codable, Equatable, Sendable {
     case logMeal = "log_meal"
     case suggestMeal = "suggest_meal"
@@ -8,6 +10,40 @@ enum MealIntent: String, Codable, Equatable, Sendable {
     case updatePreference = "update_preference"
     case updateMemory = "update_memory"
     case unknown
+}
+
+enum PendingActionType: String, Codable, Equatable, Sendable {
+    case clarifyPortion = "clarify_portion"
+    case clarifyFood = "clarify_food"
+    case confirmLog = "confirm_log"
+    case confirmCorrection = "confirm_correction"
+}
+
+struct ClientActionDTO: Codable, Equatable, Sendable {
+    var type: String
+    var id: String
+}
+
+enum MemoryProposalAction: String, Codable, Equatable, Sendable {
+    case add
+    case update
+    case delete
+}
+
+// MARK: - Request DTO
+
+struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
+    var utterance: String
+    var action: ClientActionDTO? = nil
+    var timezone: String
+    var dayKey: String
+    var preferenceContext: PreferenceContextDTO
+    var diaryContext: DiaryContextDTO
+    var longTermMemory: [LongTermMemoryNoteDTO]
+    var conversation: ConversationContextDTO
+    var context: InterpretContextDTO
+    /// Legacy alias for #37 memory snapshot contract coverage.
+    var memorySnapshot: MemorySnapshotDTO?
 }
 
 struct PreferenceContextDTO: Codable, Equatable, Sendable {
@@ -21,12 +57,20 @@ struct DiaryDaySummaryDTO: Codable, Equatable, Sendable {
     var dayKey: String
     var mealCount: Int
     var itemNames: [String]
+    /// Per-item name, slot, grams — lets the agent repeat "same as yesterday".
+    var entries: [DiaryEntryDTO] = []
 }
 
 struct DiaryEntryDTO: Codable, Equatable, Sendable {
     var name: String
     var mealSlot: String?
     var grams: Double?
+    var entryId: String? = nil
+    var itemIndex: Int? = nil
+    var foodId: String? = nil
+    var source: String? = nil
+    var per100g: MacroTotals? = nil
+    var ingredientFamily: String? = nil
 }
 
 struct DiaryContextDTO: Codable, Equatable, Sendable {
@@ -57,20 +101,6 @@ struct InterpretContextDTO: Codable, Equatable, Sendable {
     var lastIntent: String?
 }
 
-struct InterpretMealRequest: Codable, Equatable, Sendable {
-    var utterance: String
-    var timezone: String
-    var dayKey: String
-    var preferenceContext: PreferenceContextDTO
-    var diaryContext: DiaryContextDTO
-    var longTermMemory: [LongTermMemoryNoteDTO]
-    var conversation: ConversationContextDTO
-    var context: InterpretContextDTO
-
-    /// Legacy alias fields for #37 memory snapshot contract coverage.
-    var memorySnapshot: MemorySnapshotDTO?
-}
-
 struct MemorySnapshotDTO: Codable, Equatable, Sendable {
     var preferences: [String]
     var dislikes: [String]
@@ -85,26 +115,9 @@ struct RecentCorrectionDTO: Codable, Equatable, Sendable {
     var at: String
 }
 
-struct FoodCandidateDTO: Codable, Equatable, Sendable {
-    var foodId: String
-    var displayName: String
-    var grams: Double?
-    var confidence: Double?
-}
+// MARK: - Response DTO
 
-enum MemoryProposalAction: String, Codable, Equatable, Sendable {
-    case add
-    case update
-    case delete
-}
-
-struct MemoryProposalDTO: Codable, Equatable, Sendable {
-    var action: MemoryProposalAction
-    var id: String?
-    var text: String?
-}
-
-struct InterpretMealResponse: Codable, Equatable, Sendable {
+struct InterpretMealResponseDTO: Codable, Equatable, Sendable {
     var intent: MealIntent
     var candidates: [FoodCandidateDTO]
     var clarifyingQuestion: String?
@@ -113,15 +126,92 @@ struct InterpretMealResponse: Codable, Equatable, Sendable {
     var assistantMessage: String
     var warnings: [String]
     var memoryProposals: [MemoryProposalDTO]?
+    var pendingAction: PendingActionDTO?
+    var suggestionBudget: SuggestionBudgetDTO?
+    var suggestionOptions: [SuggestionOptionDTO]?
+    var workingMemory: WorkingMemoryPayload?
+
+    init(
+        intent: MealIntent,
+        candidates: [FoodCandidateDTO] = [],
+        clarifyingQuestion: String? = nil,
+        correction: String? = nil,
+        suggestedTemplateId: String? = nil,
+        assistantMessage: String,
+        warnings: [String] = [],
+        memoryProposals: [MemoryProposalDTO]? = nil,
+        pendingAction: PendingActionDTO? = nil,
+        suggestionBudget: SuggestionBudgetDTO? = nil,
+        suggestionOptions: [SuggestionOptionDTO]? = nil,
+        workingMemory: WorkingMemoryPayload? = nil
+    ) {
+        self.suggestionBudget = suggestionBudget
+        self.suggestionOptions = suggestionOptions
+        self.workingMemory = workingMemory
+        self.intent = intent
+        self.candidates = candidates
+        self.clarifyingQuestion = clarifyingQuestion
+        self.correction = correction
+        self.suggestedTemplateId = suggestedTemplateId
+        self.assistantMessage = assistantMessage
+        self.warnings = warnings
+        self.memoryProposals = memoryProposals
+        self.pendingAction = pendingAction
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        intent = try c.decode(MealIntent.self, forKey: .intent)
+        candidates = try c.decodeIfPresent([FoodCandidateDTO].self, forKey: .candidates) ?? []
+        clarifyingQuestion = try c.decodeIfPresent(String.self, forKey: .clarifyingQuestion)
+        correction = try c.decodeIfPresent(String.self, forKey: .correction)
+        suggestedTemplateId = try c.decodeIfPresent(String.self, forKey: .suggestedTemplateId)
+        assistantMessage = try c.decodeIfPresent(String.self, forKey: .assistantMessage) ?? ""
+        warnings = try c.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        memoryProposals = try c.decodeIfPresent([MemoryProposalDTO].self, forKey: .memoryProposals)
+        pendingAction = try c.decodeIfPresent(PendingActionDTO.self, forKey: .pendingAction)
+        suggestionBudget = try c.decodeIfPresent(SuggestionBudgetDTO.self, forKey: .suggestionBudget)
+        suggestionOptions = try c.decodeIfPresent([SuggestionOptionDTO].self, forKey: .suggestionOptions)
+        workingMemory = try c.decodeIfPresent(WorkingMemoryPayload.self, forKey: .workingMemory)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case intent, candidates, clarifyingQuestion, correction, suggestedTemplateId
+        case assistantMessage, warnings, memoryProposals, pendingAction, suggestionBudget, suggestionOptions
+        case workingMemory
+    }
 
     func workingMemoryPayload() -> WorkingMemoryPayload? {
+        if let workingMemory { return workingMemory }
+        if let pending = pendingAction {
+            let cands = pending.payload.candidates.isEmpty ? candidates : pending.payload.candidates
+            return WorkingMemoryPayload(
+                pendingIntent: pending.type.rawValue,
+                clarifyingQuestion: pending.prompt.isEmpty ? clarifyingQuestion : pending.prompt,
+                candidates: cands.map {
+                    WorkingMemoryCandidate(
+                        foodId: $0.foodId,
+                        displayName: $0.displayName,
+                        grams: $0.grams,
+                        source: $0.source
+                    )
+                },
+                pendingAction: pending
+            )
+        }
         guard intent == .clarify || !candidates.isEmpty else { return nil }
         return WorkingMemoryPayload(
             pendingIntent: intent.rawValue,
             clarifyingQuestion: clarifyingQuestion,
             candidates: candidates.map {
-                WorkingMemoryCandidate(foodId: $0.foodId, displayName: $0.displayName, grams: $0.grams)
-            }
+                WorkingMemoryCandidate(
+                    foodId: $0.foodId,
+                    displayName: $0.displayName,
+                    grams: $0.grams,
+                    source: $0.source
+                )
+            },
+            pendingAction: nil
         )
     }
 
@@ -131,5 +221,175 @@ struct InterpretMealResponse: Codable, Equatable, Sendable {
               let string = String(data: data, encoding: .utf8)
         else { return nil }
         return string
+    }
+}
+
+struct FoodCandidateDTO: Codable, Equatable, Sendable {
+    var foodId: String
+    var displayName: String
+    var grams: Double?
+    var confidence: Double?
+    var source: String?
+    var provisionalPer100g: MacroTotals?
+    var citationUrl: String?
+}
+
+struct MemoryProposalDTO: Codable, Equatable, Sendable {
+    var action: MemoryProposalAction
+    var id: String?
+    var text: String?
+}
+
+struct HouseholdMeasureDTO: Codable, Equatable, Sendable {
+    var id: String
+    var label: String
+    var grams: Double
+}
+
+struct ResolvedItemDTO: Codable, Equatable, Sendable {
+    var foodId: String
+    var displayName: String
+    var grams: Double
+    var per100g: MacroTotals
+    var source: String
+    var citationUrl: String?
+    var portionLabel: String?
+    var family: String?
+    var measures: [HouseholdMeasureDTO]?
+    var entryId: String?
+    var itemIndex: Int?
+}
+
+struct ClarifyOptionDTO: Codable, Equatable, Sendable {
+    var id: String
+    var label: String
+    var foodId: String?
+    var grams: Double?
+    var per100g: MacroTotals?
+    var source: String?
+    var family: String?
+    var citationUrl: String?
+    var measures: [HouseholdMeasureDTO]?
+}
+
+struct PendingActionPayloadDTO: Codable, Equatable, Sendable {
+    var candidates: [FoodCandidateDTO]
+    var memoryText: String?
+    var suggestionOptions: [SuggestionOptionDTO]?
+    var resolvedItems: [ResolvedItemDTO]
+    var clarifyOptions: [ClarifyOptionDTO]
+    var entryId: String?
+    var itemIndex: Int?
+    var correctionOp: String?
+    var freeTextGrams: Bool
+    var manualLog: Bool
+    var reason: String?
+
+    init(
+        candidates: [FoodCandidateDTO] = [],
+        memoryText: String? = nil,
+        suggestionOptions: [SuggestionOptionDTO]? = nil,
+        resolvedItems: [ResolvedItemDTO] = [],
+        clarifyOptions: [ClarifyOptionDTO] = [],
+        entryId: String? = nil,
+        itemIndex: Int? = nil,
+        correctionOp: String? = nil,
+        freeTextGrams: Bool = false,
+        manualLog: Bool = false,
+        reason: String? = nil
+    ) {
+        self.candidates = candidates
+        self.memoryText = memoryText
+        self.suggestionOptions = suggestionOptions
+        self.resolvedItems = resolvedItems
+        self.clarifyOptions = clarifyOptions
+        self.entryId = entryId
+        self.itemIndex = itemIndex
+        self.correctionOp = correctionOp
+        self.freeTextGrams = freeTextGrams
+        self.manualLog = manualLog
+        self.reason = reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        candidates = try c.decodeIfPresent([FoodCandidateDTO].self, forKey: .candidates) ?? []
+        memoryText = try c.decodeIfPresent(String.self, forKey: .memoryText)
+        suggestionOptions = try c.decodeIfPresent([SuggestionOptionDTO].self, forKey: .suggestionOptions)
+        resolvedItems = try c.decodeIfPresent([ResolvedItemDTO].self, forKey: .resolvedItems) ?? []
+        clarifyOptions = try c.decodeIfPresent([ClarifyOptionDTO].self, forKey: .clarifyOptions) ?? []
+        entryId = try c.decodeIfPresent(String.self, forKey: .entryId)
+        itemIndex = try c.decodeIfPresent(Int.self, forKey: .itemIndex)
+        correctionOp = try c.decodeIfPresent(String.self, forKey: .correctionOp)
+        freeTextGrams = try c.decodeIfPresent(Bool.self, forKey: .freeTextGrams) ?? false
+        manualLog = try c.decodeIfPresent(Bool.self, forKey: .manualLog) ?? false
+        reason = try c.decodeIfPresent(String.self, forKey: .reason)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case candidates, memoryText, suggestionOptions, resolvedItems, clarifyOptions
+        case entryId, itemIndex, correctionOp, freeTextGrams, manualLog, reason
+    }
+}
+
+struct PendingActionDTO: Codable, Equatable, Sendable {
+    var type: PendingActionType
+    var prompt: String
+    var payload: PendingActionPayloadDTO
+
+    init(
+        type: PendingActionType,
+        prompt: String,
+        payload: PendingActionPayloadDTO = PendingActionPayloadDTO()
+    ) {
+        self.type = type
+        self.prompt = prompt
+        self.payload = payload
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decode(PendingActionType.self, forKey: .type)
+        prompt = try c.decodeIfPresent(String.self, forKey: .prompt) ?? ""
+        payload = try c.decodeIfPresent(PendingActionPayloadDTO.self, forKey: .payload)
+            ?? PendingActionPayloadDTO()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, prompt, payload
+    }
+}
+
+
+struct SuggestionOptionItemDTO: Codable, Equatable, Sendable {
+    var foodId: String
+    var displayName: String
+    var grams: Double?
+    var source: String?
+    var provisionalPer100g: MacroTotals?
+    var per100g: MacroTotals?
+    var citationUrl: String?
+    var portionLabel: String?
+    var family: String?
+    var measures: [HouseholdMeasureDTO]?
+}
+
+struct SuggestionOptionDTO: Codable, Equatable, Sendable {
+    var id: String
+    var title: String
+    var reason: String?
+    var items: [SuggestionOptionItemDTO]
+    var totals: MacroTotals?
+    var fit: String?
+    var overBy: [String: Double]?
+}
+
+struct SuggestionBudgetDTO: Codable, Equatable, Sendable {
+    var calories: Double?
+    var proteinG: Double?
+
+    var budget: SuggestionBudget? {
+        guard let calories, calories > 0 else { return nil }
+        return SuggestionBudget(calories: calories, proteinG: proteinG)
     }
 }

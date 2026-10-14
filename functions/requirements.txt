@@ -6,3 +6,5 @@ langchain-core>=0.3.0
 google-genai>=1.0.0
 httpx>=0.27.0
 pytest>=8.0.0
+# Phoenix client only (server started by ./run.sh via `pip install arize-phoenix`)
+arize-phoenix-otel>=0.16.0

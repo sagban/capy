@@ -13,6 +13,7 @@
 | [design/wireframes.md](design/wireframes.md) | Annotated frames |
 | [runbooks/local-dev.md](runbooks/local-dev.md) | Emulators + Xcode |
 | [runbooks/secrets-and-quotas.md](runbooks/secrets-and-quotas.md) | Secret Manager / Gemini / USDA |
+| [architecture/food-search-ranking.md](architecture/food-search-ranking.md) | Multi-source food search ranking (moat) + evals |
 | [infra/project.md](infra/project.md) | GCP/Firebase binding status |
 | [infra/firebase-auth-checklist.md](infra/firebase-auth-checklist.md) | Apple + Google auth |
 | [seed/inventory.md](seed/inventory.md) | Seed foods/templates |

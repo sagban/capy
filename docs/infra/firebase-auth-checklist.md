@@ -1,4 +1,4 @@
-# Firebase Auth checklist (Apple + Google)
+# Firebase Auth checklist (Apple + Google + email)
 
 Complete against GCP/Firebase project id recorded in `.firebaserc`.
 
@@ -47,12 +47,18 @@ iOS app:
 - [x] Phase 2 Auth UI: native `GoogleSignIn` SDK + `GoogleAuthProvider` (Firebase pinned to 12.x for package compatibility)
 - [x] URL scheme / GIDClientID present in `AppInfo.plist`
 
-## 5. Authorized domains
+## 5. Email / password
+
+- [x] Email/Password provider enabled in Firebase Console (`capy-dogfood`)
+- [x] Auth UI: `Auth.auth().signIn(withEmail:)`, `createUser(withEmail:)`, `sendPasswordReset(withEmail:)` in `AuthManager`
+- No email verification gate in V1 dogfood
+
+## 6. Authorized domains
 
 - [ ] `localhost` for emulator web tooling if needed
 - [ ] Default Firebase domains present
 
-## 6. Verify
+## 7. Verify
 
 - [ ] Emulator: create test users OR use real providers against staging
 - [ ] Callable rejects missing token

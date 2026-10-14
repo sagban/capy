@@ -58,7 +58,7 @@ final class ConversationMemoryTests: XCTestCase {
         let thread = ConversationMemoryStore.thread(in: context)
         let wm = ConversationMemoryStore.workingMemory(from: thread)
         XCTAssertEqual(wm?.pendingIntent, "clarify")
-        XCTAssertEqual(wm?.candidates?.first?.foodId, "usda_168878")
+        XCTAssertEqual(wm?.candidates.first?.foodId, "usda_168878")
     }
 
     func testLongTermMemoryProposalsAndDayRollover() throws {

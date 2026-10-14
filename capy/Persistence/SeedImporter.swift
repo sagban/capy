@@ -3,7 +3,10 @@ import SwiftData
 
 enum SeedImporter {
     private static let bundleResource = "SeedFoods"
-    private static let importedFlagKey = "capy.seedCatalog.version"
+    /// Must match `version` in SeedFoods.json (catalog build script bumps both).
+    static let bundledCatalogVersion = 2
+    private static let importedVersionKey = "capy.seedCatalog.importedVersion"
+    private static let legacyFlagPrefix = "capy.seedCatalog.version"
 
     struct SeedFile: Decodable {
         let version: Int
@@ -51,26 +54,47 @@ enum SeedImporter {
         let items: [SeedComponent]
     }
 
+    /// Cheap readiness check — no JSON decode, at most one Food row.
+    static func isCatalogReady(in context: ModelContext) -> Bool {
+        let imported = UserDefaults.standard.integer(forKey: importedVersionKey)
+        let legacyReady = UserDefaults.standard.bool(
+            forKey: "\(legacyFlagPrefix).\(bundledCatalogVersion)"
+        )
+        guard imported >= bundledCatalogVersion || legacyReady else { return false }
+        var descriptor = FetchDescriptor<Food>()
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor))?.first != nil
+    }
+
+    /// Background import for app launch. No-ops when catalog already ready.
+    static func importInBackground(container: ModelContainer, bundle: Bundle = .main) async {
+        let probe = ModelContext(container)
+        if isCatalogReady(in: probe) { return }
+        await Task.detached(priority: .userInitiated) {
+            let context = ModelContext(container)
+            try? importIfNeeded(into: context, bundle: bundle)
+        }.value
+    }
+
     @discardableResult
     static func importIfNeeded(into context: ModelContext, bundle: Bundle = .main) throws -> Bool {
+        if isCatalogReady(in: context) { return false }
         guard let url = bundle.url(forResource: bundleResource, withExtension: "json") else {
             throw SeedImportError.missingBundleResource
         }
         let data = try Data(contentsOf: url)
         let file = try JSONDecoder().decode(SeedFile.self, from: data)
-        let flag = "\(importedFlagKey).\(file.version)"
-        if UserDefaults.standard.bool(forKey: flag) {
-            let existing = try context.fetch(FetchDescriptor<Food>())
-            if !existing.isEmpty { return false }
-        }
         try importAll(file: file, into: context)
-        UserDefaults.standard.set(true, forKey: flag)
+        UserDefaults.standard.set(file.version, forKey: importedVersionKey)
+        UserDefaults.standard.set(true, forKey: "\(legacyFlagPrefix).\(file.version)")
         return true
     }
 
     /// Idempotent upsert by food/template id.
     static func importAll(file: SeedFile, into context: ModelContext) throws {
-        var foodById: [String: Food] = [:]
+        let existingFoods = (try? context.fetch(FetchDescriptor<Food>())) ?? []
+        var foodById = Dictionary(uniqueKeysWithValues: existingFoods.map { ($0.id, $0) })
+
         for seed in file.foods {
             let source: FoodSource = {
                 switch seed.source {
@@ -88,6 +112,7 @@ enum SeedImporter {
                 isComposite: false,
                 source: source,
                 usdaFdcId: seed.usdaFdcId,
+                existing: foodById[seed.id],
                 into: context
             )
             foodById[seed.id] = food
@@ -97,9 +122,7 @@ enum SeedImporter {
             var totals = MacroTotals.zero
             var totalGrams = 0.0
             for component in composite.components {
-                guard let base = foodById[component.foodId] ?? fetchFood(id: component.foodId, in: context) else {
-                    continue
-                }
+                guard let base = foodById[component.foodId] else { continue }
                 totals = totals + MacroMath.scale(per100g: base.per100g, grams: component.grams)
                 totalGrams += component.grams
             }
@@ -123,13 +146,16 @@ enum SeedImporter {
                 per100g: per100,
                 isComposite: true,
                 source: .seed,
+                existing: foodById[composite.id],
                 into: context
             )
             foodById[composite.id] = food
         }
 
+        let existingTemplates = (try? context.fetch(FetchDescriptor<MealTemplate>())) ?? []
+        let templateById = Dictionary(uniqueKeysWithValues: existingTemplates.map { ($0.id, $0) })
         for template in file.templates {
-            upsertTemplate(template, into: context)
+            upsertTemplate(template, existing: templateById[template.id], into: context)
         }
         try context.save()
     }
@@ -143,9 +169,10 @@ enum SeedImporter {
         isComposite: Bool,
         source: FoodSource = .seed,
         usdaFdcId: Int? = nil,
+        existing: Food?,
         into context: ModelContext
     ) -> Food {
-        if let existing = fetchFood(id: id, in: context) {
+        if let existing {
             existing.canonicalName = name
             existing.aliases = aliases
             existing.ingredientFamily = family
@@ -173,8 +200,12 @@ enum SeedImporter {
         return food
     }
 
-    private static func upsertTemplate(_ template: SeedTemplate, into context: ModelContext) {
-        if let existing = fetchTemplate(id: template.id, in: context) {
+    private static func upsertTemplate(
+        _ template: SeedTemplate,
+        existing: MealTemplate?,
+        into context: ModelContext
+    ) {
+        if let existing {
             for item in existing.items {
                 context.delete(item)
             }
@@ -190,29 +221,46 @@ enum SeedImporter {
         context.insert(model)
     }
 
-    private static func fetchFood(id: String, in context: ModelContext) -> Food? {
-        var descriptor = FetchDescriptor<Food>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-
-    private static func fetchTemplate(id: String, in context: ModelContext) -> MealTemplate? {
-        var descriptor = FetchDescriptor<MealTemplate>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-
     static func searchFoods(query: String, in context: ModelContext, limit: Int = 30) -> [Food] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let all = (try? context.fetch(FetchDescriptor<Food>(sortBy: [SortDescriptor(\.canonicalName)]))) ?? []
-        guard !q.isEmpty else { return Array(all.prefix(limit)) }
-        return Array(
-            all.filter { food in
-                food.canonicalName.lowercased().contains(q)
-                    || food.aliases.contains(where: { $0.lowercased().contains(q) })
-                    || food.ingredientFamily.lowercased().contains(q)
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty {
+            var descriptor = FetchDescriptor<Food>(sortBy: [SortDescriptor(\.canonicalName)])
+            descriptor.fetchLimit = limit
+            return (try? context.fetch(descriptor)) ?? []
+        }
+        let needle = q.lowercased()
+        // Short queries: avoid substring traps ("hi" ⊂ "chicken" / "white").
+        // Pull a wider pool, then rank staples above babyfood / brand noise.
+        let candidates: [Food]
+        if needle.count < 3 {
+            var descriptor = FetchDescriptor<Food>()
+            descriptor.fetchLimit = 400
+            let pool = (try? context.fetch(descriptor)) ?? []
+            candidates = pool.filter { food in
+                FoodSearchRanker.shortQueryMatches(
+                    query: needle,
+                    name: food.canonicalName,
+                    aliases: food.aliases
+                )
             }
-            .prefix(limit)
+        } else {
+            let predicate = #Predicate<Food> { food in
+                food.canonicalName.localizedStandardContains(needle)
+                    || food.aliasesRaw.localizedStandardContains(needle)
+                    || food.ingredientFamily.localizedStandardContains(needle)
+            }
+            var descriptor = FetchDescriptor<Food>(predicate: predicate)
+            descriptor.fetchLimit = max(limit * 12, 200)
+            candidates = (try? context.fetch(descriptor)) ?? []
+        }
+        return FoodSearchRanker.ranked(
+            candidates,
+            query: q,
+            name: \.canonicalName,
+            aliases: \.aliases,
+            family: \.ingredientFamily,
+            foodId: \.id,
+            limit: limit
         )
     }
 }

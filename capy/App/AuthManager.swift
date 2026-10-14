@@ -11,6 +11,9 @@ final class AuthManager {
     private(set) var user: User?
     private(set) var isBusy = false
     private(set) var errorMessage: String?
+    private(set) var noticeMessage: String?
+    /// False until Firebase delivers the first auth state (restored session or none).
+    private(set) var hasResolvedInitialState = false
     nonisolated(unsafe) private var handle: AuthStateDidChangeListenerHandle?
 
     var isSignedIn: Bool { user != nil }
@@ -24,6 +27,7 @@ final class AuthManager {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
                 self?.user = user
+                self?.hasResolvedInitialState = true
             }
         }
     }
@@ -35,7 +39,7 @@ final class AuthManager {
     }
 
     func signInWithGoogle() async {
-        errorMessage = nil
+        clearMessages()
         isBusy = true
         defer { isBusy = false }
 
@@ -65,8 +69,66 @@ final class AuthManager {
         }
     }
 
-    func signOut() {
+    func signIn(email: String, password: String) async {
+        await runEmailFlow {
+            _ = try await Auth.auth().signIn(withEmail: email, password: password)
+        }
+    }
+
+    func createAccount(email: String, password: String) async {
+        await runEmailFlow {
+            _ = try await Auth.auth().createUser(withEmail: email, password: password)
+        }
+    }
+
+    func sendPasswordReset(email: String) async {
+        guard email.contains("@") else {
+            clearMessages()
+            errorMessage = "Type your email above, then tap Forgot password."
+            return
+        }
+        await runEmailFlow {
+            try await Auth.auth().sendPasswordReset(withEmail: email)
+            // Email enumeration protection: Firebase reports success even when no account exists.
+            self.noticeMessage = "If \(email) has a Capy account, a reset link is on its way. Check spam too."
+        }
+    }
+
+    func clearMessages() {
         errorMessage = nil
+        noticeMessage = nil
+    }
+
+    private func runEmailFlow(_ body: () async throws -> Void) async {
+        clearMessages()
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            try await body()
+        } catch {
+            errorMessage = Self.emailErrorMessage(for: error)
+        }
+    }
+
+    private static func emailErrorMessage(for error: Error) -> String {
+        let ns = error as NSError
+        guard ns.domain == AuthErrorDomain, let code = AuthErrorCode(rawValue: ns.code) else {
+            return error.localizedDescription
+        }
+        switch code {
+        case .invalidEmail: return "That email address doesn't look right."
+        case .wrongPassword, .invalidCredential, .userNotFound: return "Email or password is incorrect."
+        case .emailAlreadyInUse: return "An account with that email already exists. Sign in instead."
+        case .weakPassword: return "Password needs at least 6 characters."
+        case .networkError: return "No connection. Try again."
+        case .tooManyRequests: return "Too many attempts. Wait a moment and try again."
+        case .operationNotAllowed: return "Email sign-in isn't enabled for this project."
+        default: return error.localizedDescription
+        }
+    }
+
+    func signOut() {
+        clearMessages()
         do {
             try Auth.auth().signOut()
             GIDSignIn.sharedInstance.signOut()

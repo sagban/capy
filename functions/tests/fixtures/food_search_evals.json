@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "description": "Offline golden evals for food_search ranking. Pools are fixtures — no live USDA.",
+  "cases": [
+    {
+      "id": "staple_rice_top",
+      "query": "rice",
+      "expect_breadth": "broad",
+      "pool": [
+        {"foodId": "seed_rice", "displayName": "Rice, white, long-grain, regular, enriched, cooked", "source": "seed", "family": "grain"},
+        {"foodId": "usda_baby", "displayName": "Babyfood, cereal, rice, dry", "source": "usda", "family": ""},
+        {"foodId": "usda_mix", "displayName": "Rice-A-Roni, chicken flavor", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_id": "seed_rice",
+      "expect_confidence": ["high", "medium"],
+      "expect_suggest_web": false
+    },
+    {
+      "id": "staple_chicken_breast",
+      "query": "chicken breast",
+      "expect_breadth": "broad",
+      "expect_confidence": ["high", "medium"],
+      "pool": [
+        {"foodId": "seed_cb", "displayName": "Chicken, broilers or fryers, breast, meat only, cooked, roasted", "source": "seed", "family": "poultry"},
+        {"foodId": "usda_nugget", "displayName": "Chicken nuggets", "source": "usda_branded", "family": ""},
+        {"foodId": "usda_skin", "displayName": "Chicken, broilers or fryers, breast, skin only", "source": "usda", "family": "poultry"}
+      ],
+      "expect_top_id": "seed_cb",
+      "expect_confidence": ["high", "medium"]
+    },
+    {
+      "id": "staple_egg",
+      "query": "egg",
+      "pool": [
+        {"foodId": "seed_egg", "displayName": "Egg, whole, cooked, hard-boiled", "source": "seed", "family": "egg"},
+        {"foodId": "usda_sub", "displayName": "Egg substitute, liquid", "source": "usda", "family": ""},
+        {"foodId": "usda_noodle", "displayName": "Egg noodles, cooked", "source": "usda", "family": "grain"}
+      ],
+      "expect_top_id": "seed_egg"
+    },
+    {
+      "id": "staple_banana",
+      "query": "banana",
+      "pool": [
+        {"foodId": "seed_banana", "displayName": "Bananas, raw", "source": "seed", "family": "fruit"},
+        {"foodId": "usda_chip", "displayName": "Snacks, banana chips", "source": "usda", "family": ""},
+        {"foodId": "usda_baby", "displayName": "Babyfood, banana", "source": "usda", "family": ""}
+      ],
+      "expect_top_id": "seed_banana",
+      "expect_not_top_substr": ["babyfood", "chips"]
+    },
+    {
+      "id": "staple_milk",
+      "query": "milk",
+      "pool": [
+        {"foodId": "seed_milk", "displayName": "Milk, whole, 3.25% milkfat", "source": "seed", "family": "dairy"},
+        {"foodId": "usda_choc", "displayName": "Milk, chocolate, fluid", "source": "usda", "family": "dairy"},
+        {"foodId": "usda_goat", "displayName": "Milk, goat, fluid", "source": "usda", "family": "dairy"}
+      ],
+      "expect_top_id": "seed_milk"
+    },
+    {
+      "id": "noise_reject_babyfood_rice",
+      "query": "rice",
+      "pool": [
+        {"foodId": "baby", "displayName": "Babyfood, cereal, rice, dry fortified", "source": "usda", "family": ""},
+        {"foodId": "ok", "displayName": "Rice, white, long-grain, cooked", "source": "seed", "family": "grain"}
+      ],
+      "expect_top_id": "ok"
+    },
+    {
+      "id": "noise_reject_restaurant_unless_asked",
+      "query": "chicken",
+      "pool": [
+        {"foodId": "mcd", "displayName": "McDonald's chicken sandwich", "source": "usda_branded", "family": ""},
+        {"foodId": "plain", "displayName": "Chicken, broilers or fryers, meat only, cooked", "source": "seed", "family": "poultry"}
+      ],
+      "expect_top_id": "plain"
+    },
+    {
+      "id": "restaurant_when_asked",
+      "query": "mcdonalds chicken",
+      "pool": [
+        {"foodId": "mcd", "displayName": "Chicken sandwich — McDonald's", "source": "usda_branded", "family": ""},
+        {"foodId": "plain", "displayName": "Chicken, broilers or fryers, meat only, cooked", "source": "seed", "family": "poultry"}
+      ],
+      "expect_top_id": "mcd"
+    },
+    {
+      "id": "brand_full_name_optimum",
+      "query": "Optimum Nutrition Gold Standard whey",
+      "expect_breadth": "narrow",
+      "pool": [
+        {"foodId": "generic", "displayName": "Beverages, Protein powder whey based", "source": "usda", "family": ""},
+        {"foodId": "on", "displayName": "GOLD STANDARD 100% WHEY PROTEIN POWDER DRINK MIX — Optimum Nutrition, Inc.", "source": "usda_branded", "family": ""},
+        {"foodId": "publix", "displayName": "VANILLA WHEY PROTEIN POWDER — Publix Super Markets, Inc.", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_id": "on",
+      "expect_confidence": ["high", "medium"],
+      "expect_suggest_web": false
+    },
+    {
+      "id": "brand_nickname_on_abstain",
+      "query": "ON whey protein",
+      "expect_breadth": "narrow",
+      "pool": [
+        {"foodId": "generic", "displayName": "Beverages, Protein powder whey based", "source": "usda", "family": ""},
+        {"foodId": "publix", "displayName": "VANILLA WHEY PROTEIN POWDER — Publix Super Markets, Inc.", "source": "usda_branded", "family": ""},
+        {"foodId": "eas", "displayName": "Beverages, ABBOTT, EAS whey protein powder", "source": "usda", "family": ""}
+      ],
+      "expect_top_has_unexplained": ["on"],
+      "expect_confidence": ["low"],
+      "expect_suggest_web": true,
+      "expect_results_empty": true
+    },
+    {
+      "id": "brand_nickname_resolved_in_label",
+      "query": "ON whey",
+      "expect_breadth": "narrow",
+      "pool": [
+        {"foodId": "on", "displayName": "ON Whey Protein — Optimum Nutrition", "source": "usda_branded", "family": ""},
+        {"foodId": "generic", "displayName": "Beverages, Protein powder whey based", "source": "usda", "family": ""}
+      ],
+      "expect_top_id": "on",
+      "expect_suggest_web": false
+    },
+    {
+      "id": "gold_standard_phrase",
+      "query": "Gold Standard 100% Whey",
+      "pool": [
+        {"foodId": "kraft", "displayName": "GOLD STANDARD RECIPE DRESSING — Kraft Heinz Foods Company", "source": "usda_branded", "family": ""},
+        {"foodId": "on", "displayName": "GOLD STANDARD 100% WHEY PROTEIN POWDER DRINK MIX — Optimum Nutrition, Inc.", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_id": "on"
+    },
+    {
+      "id": "personal_today_boost",
+      "query": "whey",
+      "today": [{"name": "Gold Standard whey", "grams": 64}],
+      "pool": [
+        {"foodId": "iso", "displayName": "Whey protein isolate", "source": "usda", "family": ""},
+        {"foodId": "gs", "displayName": "Gold Standard whey — Optimum Nutrition, Inc.", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_id": "gs"
+    },
+    {
+      "id": "personal_likes_boost",
+      "query": "yogurt",
+      "likes": ["fage"],
+      "pool": [
+        {"foodId": "plain", "displayName": "Yogurt, plain, whole milk", "source": "seed", "family": "dairy"},
+        {"foodId": "fage", "displayName": "Total 0% Greek Yogurt — Fage", "source": "usda_branded", "family": "dairy"}
+      ],
+      "expect_top_id": "fage"
+    },
+    {
+      "id": "personal_dislike_demote",
+      "query": "milk",
+      "dislikes": ["chocolate"],
+      "pool": [
+        {"foodId": "choc", "displayName": "Milk, chocolate, fluid", "source": "usda", "family": "dairy"},
+        {"foodId": "whole", "displayName": "Milk, whole, 3.25% milkfat", "source": "seed", "family": "dairy"}
+      ],
+      "expect_top_id": "whole"
+    },
+    {
+      "id": "personal_pending_candidate",
+      "query": "that one",
+      "pending_candidates": [
+        {"foodId": "pending_a", "displayName": "Oats, rolled, dry"}
+      ],
+      "pool": [
+        {"foodId": "pending_a", "displayName": "Oats, rolled, dry", "source": "seed", "family": "grain"},
+        {"foodId": "other", "displayName": "That one protein bar — Quest", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_id": "pending_a"
+    },
+    {
+      "id": "personal_correction_boost",
+      "query": "oats",
+      "corrections": [{"text": "switched to steel cut oats", "at": "2026-10-11T12:00:00Z"}],
+      "pool": [
+        {"foodId": "rolled", "displayName": "Oats, rolled, dry", "source": "seed", "family": "grain"},
+        {"foodId": "steel", "displayName": "Oats, steel cut, dry", "source": "seed", "family": "grain"}
+      ],
+      "expect_top_id": "steel"
+    },
+    {
+      "id": "diet_vegetarian_blocks_poultry",
+      "query": "protein",
+      "diets": ["vegetarian"],
+      "pool": [
+        {"foodId": "chicken", "displayName": "Chicken breast, cooked", "source": "seed", "family": "poultry"},
+        {"foodId": "tofu", "displayName": "Tofu, firm", "source": "seed", "family": "soy"}
+      ],
+      "expect_top_id": "tofu",
+      "expect_not_in_top_ids": ["chicken"]
+    },
+    {
+      "id": "empty_pool_web",
+      "query": "xyznonexistentfood999",
+      "pool": [],
+      "expect_confidence": ["none"],
+      "expect_suggest_web": true,
+      "expect_results_empty": true
+    },
+    {
+      "id": "ambiguous_close_scores_medium",
+      "query": "apple",
+      "pool": [
+        {"foodId": "a1", "displayName": "Apples, raw, with skin", "source": "seed", "family": "fruit"},
+        {"foodId": "a2", "displayName": "Apples, raw, without skin", "source": "usda", "family": "fruit"}
+      ],
+      "expect_top_id": "a1",
+      "expect_confidence": ["high", "medium"]
+    },
+    {
+      "id": "paneer_seed",
+      "query": "paneer",
+      "pool": [
+        {"foodId": "seed_paneer", "displayName": "Paneer", "source": "seed", "family": "dairy"},
+        {"foodId": "other", "displayName": "Cheese, cottage", "source": "usda", "family": "dairy"}
+      ],
+      "expect_top_id": "seed_paneer"
+    },
+    {
+      "id": "short_hi_no_chicken",
+      "query": "hi",
+      "pool": [
+        {"foodId": "chicken", "displayName": "Chicken, broilers or fryers", "source": "seed", "family": "poultry"}
+      ],
+      "expect_suggest_web": true,
+      "expect_results_empty": true
+    },
+    {
+      "id": "form_cooked_preferred_broad",
+      "query": "rice",
+      "pool": [
+        {"foodId": "raw", "displayName": "Rice, white, long-grain, raw", "source": "usda", "family": "grain"},
+        {"foodId": "cooked", "displayName": "Rice, white, long-grain, cooked", "source": "seed", "family": "grain"}
+      ],
+      "expect_top_id": "cooked"
+    },
+    {
+      "id": "form_raw_when_asked",
+      "query": "rice raw",
+      "pool": [
+        {"foodId": "raw", "displayName": "Rice, white, long-grain, raw", "source": "usda", "family": "grain"},
+        {"foodId": "cooked", "displayName": "Rice, white, long-grain, cooked", "source": "seed", "family": "grain"}
+      ],
+      "expect_top_id": "raw"
+    },
+    {
+      "id": "brand_field_beats_description_only",
+      "query": "Fage yogurt",
+      "pool": [
+        {"foodId": "desc_only", "displayName": "Yogurt, Greek, plain, nonfat", "source": "usda", "family": "dairy"},
+        {"foodId": "branded", "displayName": "Total Plain Greek Yogurt — Fage USA Dairy Industry Inc", "source": "usda_branded", "family": "dairy"}
+      ],
+      "expect_top_id": "branded"
+    },
+    {
+      "id": "wrong_brand_not_forced",
+      "query": "Quest protein bar",
+      "expect_breadth": "narrow",
+      "pool": [
+        {"foodId": "rx", "displayName": "Protein bar — RXBAR", "source": "usda_branded", "family": ""},
+        {"foodId": "clif", "displayName": "Energy bar — Clif Bar", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_has_unexplained": ["quest"],
+      "expect_suggest_web": true,
+      "expect_results_empty": true
+    },
+    {
+      "id": "coverage_multi_token",
+      "query": "greek yogurt plain",
+      "pool": [
+        {"foodId": "greek", "displayName": "Yogurt, Greek, plain, nonfat", "source": "seed", "family": "dairy"},
+        {"foodId": "fruit", "displayName": "Yogurt, fruit, low fat", "source": "usda", "family": "dairy"}
+      ],
+      "expect_top_id": "greek"
+    },
+    {
+      "id": "imitation_demoted",
+      "query": "crab",
+      "pool": [
+        {"foodId": "imitation", "displayName": "Imitation crab, made from pollock", "source": "usda", "family": ""},
+        {"foodId": "real", "displayName": "Crustaceans, crab, alaska king, cooked", "source": "usda", "family": "fish"}
+      ],
+      "expect_top_id": "real"
+    }
+  ]
+}

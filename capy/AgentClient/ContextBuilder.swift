@@ -6,8 +6,9 @@ enum ContextBuilder {
         utterance: String,
         dayKey: String,
         timezone: String = TimeZone.current.identifier,
+        action: ClientActionDTO? = nil,
         modelContext: ModelContext
-    ) -> InterpretMealRequest {
+    ) -> InterpretMealRequestDTO {
         let prefs = (try? modelContext.fetch(FetchDescriptor<UserPreference>())) ?? []
         let preferenceContext = PreferenceContextDTO(
             likes: prefs.filter { $0.kind == .like }.map(\.value),
@@ -19,17 +20,23 @@ enum ContextBuilder {
         let entries = (try? modelContext.fetch(FetchDescriptor<MealEntry>())) ?? []
         let todayEntries = entries.filter { $0.dayKey == dayKey && $0.confirmed }
         let todayDTO: [DiaryEntryDTO] = todayEntries.flatMap { entry in
-            entry.items.map {
-                DiaryEntryDTO(name: $0.name, mealSlot: entry.mealSlot, grams: $0.grams)
-            }
+            Self.diaryItems(from: entry)
         }
 
-        let previousKeys = previousDayKeys(from: dayKey, count: 7)
+        let previousKeys = previousDayKeys(from: dayKey, count: 14)
         let previousDays: [DiaryDaySummaryDTO] = previousKeys.compactMap { key in
             let dayEntries = entries.filter { $0.dayKey == key && $0.confirmed }
             guard !dayEntries.isEmpty else { return nil }
             let names = dayEntries.flatMap { $0.items.map(\.name) }
-            return DiaryDaySummaryDTO(dayKey: key, mealCount: dayEntries.count, itemNames: names)
+            let detailed: [DiaryEntryDTO] = dayEntries.flatMap { entry in
+                Self.diaryItems(from: entry)
+            }
+            return DiaryDaySummaryDTO(
+                dayKey: key,
+                mealCount: dayEntries.count,
+                itemNames: names,
+                entries: detailed
+            )
         }
 
         let targets = (try? modelContext.fetch(
@@ -84,11 +91,12 @@ enum ContextBuilder {
             allergies: preferenceContext.allergies,
             diets: preferenceContext.diets,
             regularTemplateIds: templates.map(\.id),
-            recentCorrections: []
+            recentCorrections: RecentCorrectionStore.recent(dayKey: dayKey)
         )
 
-        return InterpretMealRequest(
+        return InterpretMealRequestDTO(
             utterance: utterance,
+            action: action,
             timezone: timezone,
             dayKey: dayKey,
             preferenceContext: preferenceContext,
@@ -98,6 +106,33 @@ enum ContextBuilder {
             context: InterpretContextDTO(assistanceLevel: level, lastIntent: lastIntent),
             memorySnapshot: memorySnapshot
         )
+    }
+
+    static func per100g(of item: MealEntryItem) -> MacroTotals? {
+        guard item.grams > 0 else { return nil }
+        return MacroTotals(
+            calories: item.calories / item.grams * 100,
+            proteinG: item.proteinG / item.grams * 100,
+            carbsG: item.carbsG / item.grams * 100,
+            fatG: item.fatG / item.grams * 100
+        )
+    }
+
+    static func diaryItems(from entry: MealEntry) -> [DiaryEntryDTO] {
+        entry.items.enumerated().map { index, item in
+            let per100 = per100g(of: item)
+            return DiaryEntryDTO(
+                name: item.name,
+                mealSlot: entry.mealSlot,
+                grams: item.grams,
+                entryId: entry.uuid.uuidString,
+                itemIndex: index,
+                foodId: item.foodId.isEmpty ? nil : item.foodId,
+                source: item.source.isEmpty ? nil : item.source,
+                per100g: per100,
+                ingredientFamily: item.ingredientFamily.isEmpty ? nil : item.ingredientFamily
+            )
+        }
     }
 
     private static func previousDayKeys(from dayKey: String, count: Int) -> [String] {

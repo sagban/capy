@@ -64,3 +64,51 @@ final class CoreVerifierTests: XCTestCase {
         }
     }
 }
+
+final class SuggestionFitTests: XCTestCase {
+    private let remaining = MacroTotals(calories: 1650, proteinG: 124, carbsG: 165, fatG: 55)
+
+    func testMealSizedFoodFitsBudgetNotWholeDay() {
+        let proposed = MacroTotals(calories: 420, proteinG: 35, carbsG: 10, fatG: 8)
+        let outcome = SuggestionVerifier.verifyFit(
+            proposed: proposed,
+            remaining: remaining,
+            budget: SuggestionBudget(calories: 500, proteinG: 30)
+        )
+        XCTAssertEqual(outcome, .accepted(proposed))
+    }
+
+    func testRejectsOverStatedCalorieBudget() {
+        let proposed = MacroTotals(calories: 700, proteinG: 40, carbsG: 10, fatG: 8)
+        let outcome = SuggestionVerifier.verifyFit(
+            proposed: proposed,
+            remaining: remaining,
+            budget: SuggestionBudget(calories: 500, proteinG: 30)
+        )
+        if case .rejected(let reason, _) = outcome {
+            XCTAssertEqual(reason, .caloriesExceedRemaining)
+        } else {
+            XCTFail("expected rejection, got \(outcome)")
+        }
+    }
+
+    func testSmallerMealIsStillWithin() {
+        let proposed = MacroTotals(calories: 350, proteinG: 30, carbsG: 80, fatG: 40)
+        let outcome = SuggestionVerifier.verifyFit(
+            proposed: proposed,
+            remaining: remaining,
+            budget: SuggestionBudget(calories: 700, proteinG: 20)
+        )
+        XCTAssertEqual(outcome, .accepted(proposed))
+    }
+
+    func testSmallerMealStaysWithinWhenProteinIsShort() {
+        let proposed = MacroTotals(calories: 300, proteinG: 10, carbsG: 30, fatG: 5)
+        let outcome = SuggestionVerifier.verifyFit(
+            proposed: proposed,
+            remaining: remaining,
+            budget: SuggestionBudget(calories: 500, proteinG: 30)
+        )
+        XCTAssertEqual(outcome, .accepted(proposed))
+    }
+}

@@ -10,6 +10,8 @@ struct ManualLogSheet: View {
     let initialMealSlot: String?
 
     @State private var query = ""
+    @State private var catalogResults: [Food] = []
+    @State private var searchTask: Task<Void, Never>?
     @State private var path = NavigationPath()
 
     init(dayKey: String, initialMealSlot: String? = nil) {
@@ -30,9 +32,7 @@ struct ManualLogSheet: View {
         }
     }
 
-    private var filteredCatalog: [Food] {
-        SeedImporter.searchFoods(query: query, in: modelContext, limit: 30)
-    }
+    private var filteredCatalog: [Food] { catalogResults }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -51,9 +51,24 @@ struct ManualLogSheet: View {
                 }
                 .onAppear {
                     MealTypeCatalog.seedIfNeeded(in: modelContext)
-                    try? SeedImporter.importIfNeeded(into: modelContext)
+                    refreshCatalog(for: query)
+                }
+                .onChange(of: query) { _, newValue in
+                    searchTask?.cancel()
+                    searchTask = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(200))
+                        guard !Task.isCancelled else { return }
+                        refreshCatalog(for: newValue)
+                    }
+                }
+                .onDisappear {
+                    searchTask?.cancel()
                 }
         }
+    }
+
+    private func refreshCatalog(for text: String) {
+        catalogResults = SeedImporter.searchFoods(query: text, in: modelContext, limit: 30)
     }
 
     private var foodPicker: some View {

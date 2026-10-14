@@ -31,18 +31,37 @@ npx -y firebase-tools@latest apps:sdkconfig IOS <APP_ID> > /tmp/GoogleService-In
 # Optional project ids for tooling
 cp .env.example .env
 
-# Emulator-only USDA key (prod uses Secret Manager — not this file)
+# Emulator-only Vertex model / location (do NOT set GOOGLE_CLOUD_PROJECT — reserved)
 cp functions/.env.example functions/.env
-# Edit functions/.env → USDA_FDC_API_KEY=<data.gov key>
+
+# Emulator override for USDA SecretParam (optional; seed catalog works without a real key)
+# printf 'USDA_FDC_API_KEY=your-data-gov-key\n' > functions/.secret.local
 ```
 
-Gemini in prod/emulator: **Vertex ADC** (no API key file).  
+Gemini in prod/emulator: **Vertex ADC** (`~/.config/gcloud/application_default_credentials.json`).  
 USDA in prod: Secret Manager — see [secrets-and-quotas.md](secrets-and-quotas.md).
 
 ## Emulators
 
 ```bash
-cd functions && python3 -m venv .venv && source .venv/bin/activate
+./run.sh
+```
+
+(`run.sh` ensures `functions/venv`, seeds `.env` / `.secret.local` if missing, starts **Phoenix** on `:6006` when `CAPY_PHOENIX=1`, then Auth + Functions.)
+
+| Service | Host |
+|---------|------|
+| Phoenix traces | http://127.0.0.1:6006 (`capy-harness`) |
+| Auth | `127.0.0.1:9099` |
+| Functions | `127.0.0.1:5001` |
+| Emulator UI | http://127.0.0.1:4000 |
+
+Disable Phoenix: set `CAPY_PHOENIX=0` in `functions/.env`.
+
+Manual equivalent:
+
+```bash
+cd functions && python3.12 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cd ..
 npx -y firebase-tools@latest emulators:start --only auth,functions
@@ -52,9 +71,10 @@ npx -y firebase-tools@latest emulators:start --only auth,functions
 |---------|----------------|
 | Auth | `127.0.0.1:9099` |
 | Functions | `127.0.0.1:5001` |
-| UI | `127.0.0.1:4000` |
+| Emulator UI | `127.0.0.1:4000` |
+| Phoenix | `127.0.0.1:6006` |
 
-Point the iOS `AgentClient` at the Functions emulator in DEBUG builds by setting env `CAPY_USE_FUNCTIONS_EMULATOR=1`.
+The **capy Local** scheme sets `CAPY_ENVIRONMENT=local`; `AppEnvironment.local` routes `AgentClient` to the Functions emulator.
 
 ### Harness unit / golden tests (no emulator required)
 
@@ -83,7 +103,7 @@ Callable: `interpret_meal` in `us-central1` (codebase `capy-harness`).
 
 Production Gemini = **Vertex AI + ADC** (GCP credits). USDA = Secret Manager `USDA_FDC_API_KEY`. See [secrets-and-quotas.md](secrets-and-quotas.md).
 
-iOS production builds call `https://us-central1-capy-dogfood.cloudfunctions.net/interpret_meal`. DEBUG + `CAPY_USE_FUNCTIONS_EMULATOR=1` uses the emulator instead.
+iOS **capy Prod** calls deployed `interpret_meal` via Firebase Functions SDK. **capy Local** uses `AppEnvironment.local.baseURL` (Functions emulator).
 
 ## iOS schemes (Local vs Prod)
 
@@ -92,13 +112,14 @@ iOS production builds call `https://us-central1-capy-dogfood.cloudfunctions.net/
 | **capy Local** | `DebugLocal` / `ReleaseLocal` → [`Config/Local.xcconfig`](../../Config/Local.xcconfig) | Functions emulator `127.0.0.1:5001` |
 | **capy Prod** | `DebugProd` / `ReleaseProd` → [`Config/Prod.xcconfig`](../../Config/Prod.xcconfig) | Deployed `interpret_meal` on `capy-dogfood` |
 
-`EnvironmentConfig` reads the active xcconfig (via `CAPY_LOCAL` / Info.plist). Pick the scheme in Xcode’s scheme menu before Run.
+`AppEnvironment` owns per-env behavior; `EnvironmentConfig` resolves the active scheme (`CAPY_LOCAL` / `CAPYEnvironment`). Pick the scheme in Xcode before Run.
 
 Local run checklist:
 
-1. `npx -y firebase-tools@latest emulators:start --only auth,functions`
-2. Xcode scheme → **capy Local**
-3. Sign in (Auth emulator or project Auth as configured)
+1. `./run.sh` (also writes `Config/LocalEmulatorHost.xcconfig` with your Mac LAN IP)
+2. Xcode scheme → **capy Local** → rebuild
+3. Sign in (production Auth is fine; Functions hit the emulator)
+4. **Simulator** uses `127.0.0.1`. **Physical device** uses the LAN IP from step 1 — rebuild after `./run.sh` so the IP is baked in.
 
 Prod dogfood: scheme → **capy Prod** (no emulator).
 

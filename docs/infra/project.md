@@ -35,6 +35,7 @@ To switch later:
 | Provider | Status |
 |----------|--------|
 | Google Sign-In | **Enabled** (Console). Local `GoogleService-Info.plist` includes `CLIENT_ID` / `REVERSED_CLIENT_ID` |
+| Email/Password | **Enabled** (Console). No email verification gate in V1 |
 | Sign in with Apple | Requires Apple Developer key + Firebase Console / Services ID — see [firebase-auth-checklist.md](firebase-auth-checklist.md) |
 
 ## Next infra

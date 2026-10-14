@@ -227,6 +227,8 @@ final class MealEntry {
     var mealSlot: String?
     var originalUserText: String?
     var confirmed: Bool
+    /// Stable id sent to the agent so repeat and correct target this entry.
+    var uuid: UUID = UUID()
     @Relationship(deleteRule: .cascade, inverse: \MealEntryItem.entry)
     var items: [MealEntryItem]
 
@@ -264,6 +266,8 @@ final class MealEntryItem {
     var foodId: String = ""
     /// Ingredient family snapshot for same-day variety hard filter.
     var ingredientFamily: String = ""
+    /// catalog, usda, usda_branded, web, estimate, or diary.
+    var source: String = ""
     var entry: MealEntry?
 
     init(
@@ -274,7 +278,8 @@ final class MealEntryItem {
         carbsG: Double,
         fatG: Double,
         foodId: String = "",
-        ingredientFamily: String = ""
+        ingredientFamily: String = "",
+        source: String = ""
     ) {
         self.name = name
         self.grams = grams
@@ -284,6 +289,7 @@ final class MealEntryItem {
         self.fatG = fatG
         self.foodId = foodId
         self.ingredientFamily = ingredientFamily
+        self.source = source
     }
 }
 

@@ -37,7 +37,6 @@ struct capyApp: App {
         }()
         let context = sharedModelContainer.mainContext
         MealTypeCatalog.seedIfNeeded(in: context)
-        try? SeedImporter.importIfNeeded(into: context)
         _ = ConversationMemoryStore.thread(in: context)
         _authManager = State(initialValue: AuthManager())
     }
@@ -50,9 +49,8 @@ struct capyApp: App {
                     GIDSignIn.sharedInstance.handle(url)
                 }
                 .task {
-                    let context = sharedModelContainer.mainContext
-                    MealTypeCatalog.seedIfNeeded(in: context)
-                    try? SeedImporter.importIfNeeded(into: context)
+                    MealTypeCatalog.seedIfNeeded(in: sharedModelContainer.mainContext)
+                    await SeedImporter.importInBackground(container: sharedModelContainer)
                 }
         }
         .modelContainer(sharedModelContainer)

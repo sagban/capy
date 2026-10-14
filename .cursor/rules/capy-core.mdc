@@ -13,9 +13,10 @@ alwaysApply: true
 
 ## Trust boundary
 
-- The **LLM never owns macro arithmetic**. Only structured intent/food/grams.
-- Displayed calories/PCF come from deterministic Swift `Core` (or verified catalog per100g × grams).
-- Suggestion verifier: calories ≤ remaining; each macro within ±10%; else abstain.
+- The **LLM never owns macro arithmetic**. It may supply foods and quantities. Code multiplies per100g × grams. A per-100g density comes from the catalog or from a cited web lookup that passed the Atwater check.
+- Displayed calories/PCF come from deterministic Swift `Core` (catalog, web, or diary).
+- Suggestions are a finished non-blocking turn: option cards with tool-computed macros and a within/over mark. Logging one is a button (`pick_option`) or a later message. Do not auto-open the confirm sheet on suggest.
+- A suggestion is sized as a normal meal for that slot (stated budget, else the user's typical meal, else what is left split across this meal and later main meals). Meals earlier in the day that were not logged are missed, not still ahead. Remaining calories are a ceiling, not a target. Fit: calories ≤ slot budget and protein ≥ ~90% of the slot protein. A smaller meal still counts as within. Over is shown.
 
 ## UI
 

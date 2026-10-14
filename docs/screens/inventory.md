@@ -12,7 +12,7 @@ Locked IA: **TabView** — Food Log (default) / Capy / Library; **Settings** via
 
 | | |
 |--|--|
-| **Purpose** | Sign in with Apple or Google |
+| **Purpose** | Sign in with email + password or Google (Apple deferred). Email mode toggles sign in / create account; forgot password sends a Firebase reset link |
 | **Entry** | Cold start if no Firebase session |
 | **Exit** | Onboarding (first run) or Main TabView |
 | **States** | Idle, loading, provider cancel, error |
@@ -22,10 +22,10 @@ Locked IA: **TabView** — Food Log (default) / Capy / Library; **Settings** via
 
 | | |
 |--|--|
-| **Purpose** | Set calorie/PCF targets, assistance dial, starter prefs/diet |
+| **Purpose** | Friendly one-question-at-a-time setup: calories, macro style, assistance dial, diets, likes, allergies |
 | **Entry** | First authenticated session |
-| **Exit** | Main TabView (`onboardingCompleted`) |
-| **States** | Form validation |
+| **Exit** | Main TabView (`onboardingCompleted`) after Ready → Open Food Log |
+| **States** | Step progress; optional chips Skip / None; defaults on calories/macros/dial |
 | **PRD** | FR-8 seed |
 
 ## Tab: Food Log

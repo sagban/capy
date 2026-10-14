@@ -15,20 +15,44 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd.apps.googleusercontent.com</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>CapyBackground</string>
+		<key>UIImageName</key>
+		<string>CapyLaunch</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<false/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Capy reaches the local Functions emulator while you develop on this device.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Capy uses the microphone so you can say what you ate.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Capy turns your speech into text so you can log meals hands-free.</string>
 	<key>CAPYEnvironment</key>
 	<string>$(CAPY_ENVIRONMENT)</string>
-	<key>CAPYUseFunctionsEmulator</key>
-	<string>$(CAPY_USE_FUNCTIONS_EMULATOR)</string>
-	<key>FIREBASE_PROJECT_ID</key>
-	<string>$(FIREBASE_PROJECT_ID)</string>
+	<key>CAPYEmulatorHost</key>
+	<string>$(CAPYEmulatorHost)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+			<key>127.0.0.1</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 </dict>
 </plist>

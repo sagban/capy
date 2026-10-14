@@ -3,32 +3,28 @@ import SwiftData
 
 struct CapyTabView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \DailyTarget.effectiveDate, order: .reverse) private var targets: [DailyTarget]
     @Query private var entries: [MealEntry]
     @Query private var settings: [AppSettings]
     @Query(sort: \MealType.sortOrder) private var mealTypes: [MealType]
 
     @State private var draft = ""
-    @State private var messages: [ChatBubble] = [
-        ChatBubble(role: .capy, text: "what did you have to eat?"),
-    ]
+    @State private var messages: [ChatBubble] = []
     @State private var showConfirm = false
-    @State private var pendingName = ""
-    @State private var pendingFoodId = ""
-    @State private var pendingFamily = ""
-    @State private var pendingCalories = 450.0
-    @State private var pendingProtein = 30.0
-    @State private var pendingCarbs = 40.0
-    @State private var pendingFat = 15.0
-    @State private var pendingBaseGrams = 100.0
-    @State private var pendingGrams = 100.0
+    @State private var showManualLog = false
+    @State private var pendingLines: [ConfirmLine] = []
     @State private var pendingMealSlot = ""
+    @State private var pendingCorrectionOp: String?
     @State private var isSending = false
+    @State private var lastUtterance = ""
+    @State private var lastAction: ClientActionDTO?
     @State private var speech = SpeechInputController()
     @FocusState private var talkFocused: Bool
     @State private var showMemory = false
     @State private var didLoadThread = false
     @AppStorage("capy.lastConversationDayKey") private var lastConversationDayKey = ""
+    @AppStorage("capy.eveningCheckInDayKey") private var eveningCheckInDayKey = ""
 
     private var todayKey: String { DayKey.make() }
 
@@ -57,6 +53,10 @@ struct CapyTabView: View {
         }
     }
 
+    private var remaining: MacroTotals {
+        MacroTotals.remaining(target: target, eaten: eaten)
+    }
+
     private var canSend: Bool {
         !isSending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -65,28 +65,35 @@ struct CapyTabView: View {
         NavigationStack {
             ZStack {
                 CapyScreenBackground()
-                    .onTapGesture {
-                        talkFocused = false
-                        Keyboard.dismiss()
-                    }
 
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
+                            if messages.isEmpty { starterPrompts }
                             ForEach(messages) { message in
                                 chatBubble(message)
                                     .id(message.id)
+                            }
+                            if isSending {
+                                ProgressView()
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .accessibilityLabel("Capy is typing")
                             }
                         }
                         .padding(.horizontal)
                         .padding(.top, 12)
                         .padding(.bottom, 16)
+                        // Tall hit target so taps in empty chat area dismiss the keyboard.
+                        // simultaneousGesture + TapGesture: scroll/drag must not count as a tap.
+                        .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(
+                            TapGesture().onEnded { dismissTalkKeyboard() }
+                        )
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onTapGesture {
-                        talkFocused = false
-                        Keyboard.dismiss()
-                    }
+                    // Don't hide keyboard just because the user scrolled the thread.
+                    .scrollDismissesKeyboard(.never)
                     .onChange(of: messages.count) { _, _ in
                         if let last = messages.last?.id {
                             withAnimation(.easeOut(duration: 0.2)) {
@@ -137,29 +144,26 @@ struct CapyTabView: View {
                 }
                 SettingsToolbarButton()
             }
-            .keyboardDoneToolbar()
+            // No keyboard Done toolbar — it collides with the in-composer Send;
+            // return key is .send and taps outside dismiss.
             .sheet(isPresented: $showConfirm) {
-                MealConfirmationSheet(
-                    name: pendingName,
-                    grams: $pendingGrams,
-                    baseGrams: pendingBaseGrams,
-                    mealSlot: $pendingMealSlot,
-                    calories: pendingCalories,
-                    protein: pendingProtein,
-                    carbs: pendingCarbs,
-                    fat: pendingFat,
-                    onConfirm: confirmPending
-                )
-                .presentationDetents([.medium])
+                confirmSheet
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showManualLog) {
+                ManualLogSheet(dayKey: todayKey, initialMealSlot: pendingMealSlot.isEmpty ? nil : pendingMealSlot)
             }
             .sheet(isPresented: $showMemory) {
                 MemorySheetView()
             }
             .onAppear {
                 MealTypeCatalog.seedIfNeeded(in: modelContext)
-                try? SeedImporter.importIfNeeded(into: modelContext)
                 loadThreadIfNeeded()
                 handleDayRolloverIfNeeded()
+                maybeEveningCheckIn()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { maybeEveningCheckIn() }
             }
             .onChange(of: speech.transcript) { _, newValue in
                 guard speech.isRecording, !newValue.isEmpty else { return }
@@ -168,9 +172,7 @@ struct CapyTabView: View {
             .onChange(of: speech.isRecording) { wasRecording, isRecording in
                 if wasRecording && !isRecording {
                     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !text.isEmpty {
-                        talkFocused = false
-                    }
+                    if !text.isEmpty { dismissTalkKeyboard() }
                 }
             }
             .onDisappear {
@@ -179,24 +181,107 @@ struct CapyTabView: View {
         }
     }
 
+    @ViewBuilder
+    private var confirmSheet: some View {
+        MealConfirmationSheet(
+            lines: $pendingLines,
+            mealSlot: $pendingMealSlot,
+            correctionOp: pendingCorrectionOp,
+            onConfirm: { confirmPending() }
+        )
+    }
+
+    private static let starters = [
+        "What should I eat?",
+        "Same breakfast as yesterday",
+        "I had 4 eggs and 2 slices of sourdough",
+    ]
+
+    private var starterPrompts: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Log what you ate, or ask what fits your day.")
+                .font(.subheadline)
+                .foregroundStyle(Color.capy.textSecondary)
+            ForEach(Self.starters, id: \.self) { prompt in
+                Button {
+                    draft = prompt
+                    send()
+                } label: {
+                    Text(prompt)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.capy.textPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            Color.capy.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 8)
+    }
+
     private func chatBubble(_ message: ChatBubble) -> some View {
         HStack {
             if message.role == .user { Spacer(minLength: 48) }
-            Text(message.text)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    message.role == .capy
-                    ? Color.capy.surfaceElevated
-                    : Color.capy.accent,
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
-                .foregroundStyle(
-                    message.role == .capy
-                    ? Color.capy.textPrimary
-                    : Color.white
-                )
-            if message.role == .capy { Spacer(minLength: 48) }
+            VStack(alignment: .leading, spacing: 8) {
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            message.role == .user ? Color.capy.accent : Color.capy.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                        .foregroundStyle(message.role == .user ? Color.white : Color.capy.textPrimary)
+                }
+                if message.role == .error {
+                    Button("Retry") { retryLast() }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.capy.accent)
+                }
+                if !message.suggestions.isEmpty {
+                    suggestionCards(message.suggestions)
+                }
+                if message.manualLog {
+                    Button("Manual Log") { showManualLog = true }
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+            if message.role != .user { Spacer(minLength: 48) }
+        }
+    }
+
+    private func suggestionCards(_ options: [SuggestionOptionDTO]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(options, id: \.id) { option in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(option.title)
+                        .font(.subheadline.weight(.semibold))
+                    let foods = option.items.map(\.displayName).filter { !$0.isEmpty }
+                    if !foods.isEmpty {
+                        Text(foods.joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(Color.capy.textSecondary)
+                    }
+                    if let totals = option.totals {
+                        let mark = option.fit == "over" ? "over the meal budget" : "fits"
+                        Text("\(Int(totals.calories.rounded())) cal · \(Int(totals.proteinG.rounded())) g protein · \(mark)")
+                            .font(.caption)
+                            .foregroundStyle(Color.capy.textSecondary)
+                    }
+                    Button("Log this") {
+                        send(action: ClientActionDTO(type: "pick_option", id: option.id), echo: option.title)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.capy.accent)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.capy.surfaceElevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
         }
     }
 
@@ -222,8 +307,7 @@ struct CapyTabView: View {
                 .accessibilityLabel("Send")
             } else {
                 Button {
-                    talkFocused = false
-                    Keyboard.dismiss()
+                    dismissTalkKeyboard()
                     speech.toggle()
                 } label: {
                     Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.fill")
@@ -254,8 +338,13 @@ struct CapyTabView: View {
         didLoadThread = true
         let thread = ConversationMemoryStore.thread(in: modelContext)
         let turns = ConversationMemoryStore.orderedTurns(thread)
-        guard !turns.isEmpty else { return }
-        messages = turns.map { turn in
+        // Drop the retired fake opener persisted by older builds.
+        let legacyOpener = "what did you have to eat?"
+        let visible = turns.filter {
+            !($0.role != .user && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == legacyOpener)
+        }
+        guard !visible.isEmpty else { return }
+        messages = visible.map { turn in
             ChatBubble(
                 role: turn.role == .user ? .user : .capy,
                 text: turn.text
@@ -276,158 +365,328 @@ struct CapyTabView: View {
         lastConversationDayKey = today
     }
 
+    /// Unprompted evening check-in (Guided / Full Assist only). Quiet never speaks first.
+    private func maybeEveningCheckIn() {
+        let level = settings.first?.assistanceLevel ?? .fullAssist
+        guard DialPolicy.allowsEveningCheckIn(level) else { return }
+        guard DialPolicy.allowsUnpromptedMessages(level) else { return }
+        guard eveningCheckInDayKey != todayKey else { return }
+
+        let hour = settings.first?.guidedCheckInHour ?? 18
+        let minute = settings.first?.guidedCheckInMinute ?? 0
+        let now = Calendar.current.dateComponents([.hour, .minute], from: .now)
+        let nowMinutes = (now.hour ?? 0) * 60 + (now.minute ?? 0)
+        let gate = hour * 60 + minute
+        guard nowMinutes >= gate else { return }
+
+        let left = Int(remaining.calories)
+        let text = left > 0
+            ? "anything left to log? \(left) cal left."
+            : "day’s budget is used — log a correction if something changed."
+        messages.append(ChatBubble(role: .capy, text: text))
+        ConversationMemoryStore.appendTurn(role: .assistant, text: text, in: modelContext)
+        eveningCheckInDayKey = todayKey
+    }
+
+    private func dismissTalkKeyboard() {
+        talkFocused = false
+        Keyboard.dismiss()
+    }
+
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending else { return }
         speech.stop()
-        talkFocused = false
-        Keyboard.dismiss()
+        dismissTalkKeyboard()
         messages.append(ChatBubble(role: .user, text: text))
         ConversationMemoryStore.appendTurn(role: .user, text: text, in: modelContext)
         draft = ""
+        lastUtterance = text
+        lastAction = nil
         isSending = true
-        messages.append(ChatBubble(role: .capy, text: "…"))
+        Task { await interpret(utterance: text, action: nil) }
+    }
 
-        Task {
-            await interpret(utterance: text)
-        }
+    private func send(action: ClientActionDTO, echo: String) {
+        guard !isSending else { return }
+        messages.append(ChatBubble(role: .user, text: echo))
+        ConversationMemoryStore.appendTurn(role: .user, text: echo, in: modelContext)
+        lastUtterance = ""
+        lastAction = action
+        isSending = true
+        Task { await interpret(utterance: "", action: action) }
+    }
+
+    private func retryLast() {
+        guard !isSending else { return }
+        isSending = true
+        messages.removeAll { $0.role == .error }
+        Task { await interpret(utterance: lastUtterance, action: lastAction) }
     }
 
     @MainActor
-    private func interpret(utterance: String) async {
+    private func interpret(utterance: String, action: ClientActionDTO?) async {
         defer { isSending = false }
         let request = ContextBuilder.buildInterpretRequest(
             utterance: utterance,
             dayKey: todayKey,
+            action: action,
             modelContext: modelContext
         )
         do {
             let response = try await AgentClient.shared.interpretMeal(request)
+            if response.warnings.contains("agent_unavailable") {
+                messages.append(ChatBubble(role: .error, text: ""))
+                return
+            }
             if let proposals = response.memoryProposals, !proposals.isEmpty {
                 LongTermMemoryStore.apply(proposals: proposals, in: modelContext)
             }
             let reply = response.assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-            let display = reply.isEmpty ? fallbackMessage(for: response) : reply
-            replaceLastCapyMessage(with: display)
-            ConversationMemoryStore.appendTurn(
-                role: .assistant,
-                text: display,
-                structuredPayload: response.structuredPayloadJSON(),
-                in: modelContext
-            )
-            presentConfirmationIfNeeded(response)
+            let suggestions = response.suggestionOptions ?? []
+            let manual = response.pendingAction?.payload.manualLog == true
+            let showed = !reply.isEmpty || !suggestions.isEmpty || manual || response.pendingAction != nil
+            if !reply.isEmpty || !suggestions.isEmpty || manual {
+                messages.append(
+                    ChatBubble(
+                        role: .capy,
+                        text: reply,
+                        suggestions: suggestions,
+                        manualLog: manual
+                    )
+                )
+                ConversationMemoryStore.appendTurn(
+                    role: .assistant,
+                    text: reply,
+                    structuredPayload: response.structuredPayloadJSON(),
+                    in: modelContext
+                )
+            }
+            handleStructuredResponse(response)
+            if !showed {
+                messages.append(ChatBubble(role: .error, text: ""))
+            }
         } catch {
-            let msg = "couldn’t reach the harness (\(EnvironmentConfig.environment.rawValue)). \(error.localizedDescription)"
-            replaceLastCapyMessage(with: msg)
-            ConversationMemoryStore.appendTurn(role: .assistant, text: msg, in: modelContext)
+            messages.append(ChatBubble(role: .error, text: ""))
         }
     }
 
-    private func fallbackMessage(for response: InterpretMealResponse) -> String {
-        switch response.intent {
-        case .clarify:
-            return response.clarifyingQuestion ?? "quick check?"
-        case .updateMemory:
-            return "saved that for later"
-        case .suggestMeal:
-            return response.candidates.first.map { "fits remaining: \($0.displayName)" } ?? "nothing that fits cleanly"
-        case .logMeal, .correctMeal:
-            return "confirm portions when you’re ready."
-        default:
-            return "not sure what to do with that"
+    private func handleStructuredResponse(_ response: InterpretMealResponseDTO) {
+        pendingCorrectionOp = nil
+        guard let pending = response.pendingAction else { return }
+        switch pending.type {
+        case .confirmLog:
+            let lines = confirmLines(from: pending.payload.resolvedItems)
+            guard !lines.isEmpty else { return }
+            pendingLines = lines
+            pendingMealSlot = MealTypeCatalog.suggestedName(from: mealTypes.filter(\.isEnabled)) ?? ""
+            showConfirm = true
+        case .confirmCorrection:
+            pendingCorrectionOp = pending.payload.correctionOp
+            pendingLines = correctionLines(from: pending)
+            showConfirm = !pendingLines.isEmpty || pendingCorrectionOp == "remove"
+        case .clarifyFood, .clarifyPortion:
+            break
         }
     }
 
-    private func replaceLastCapyMessage(with text: String) {
-        if let idx = messages.indices.last, messages[idx].role == .capy {
-            messages[idx] = ChatBubble(id: messages[idx].id, role: .capy, text: text)
-        } else {
-            messages.append(ChatBubble(role: .capy, text: text))
+    private func confirmLines(from items: [ResolvedItemDTO]) -> [ConfirmLine] {
+        items.enumerated().compactMap { index, item in
+            guard item.grams > 0 else { return nil }
+            return ConfirmLine(
+                id: "\(index)-\(item.foodId)",
+                name: item.displayName,
+                foodId: item.foodId,
+                grams: item.grams,
+                per100g: item.per100g,
+                source: item.source,
+                citationUrl: item.citationUrl,
+                portionLabel: item.portionLabel,
+                family: item.family ?? "",
+                entryId: item.entryId,
+                itemIndex: item.itemIndex,
+                priorGrams: nil
+            )
         }
     }
 
-    private func presentConfirmationIfNeeded(_ response: InterpretMealResponse) {
-        guard response.intent == .logMeal || response.intent == .correctMeal || response.intent == .suggestMeal else {
-            return
+    private func correctionLines(from pending: PendingActionDTO) -> [ConfirmLine] {
+        guard let entryId = pending.payload.entryId else { return [] }
+        let index = pending.payload.itemIndex ?? 0
+        let match = entries.first { $0.uuid.uuidString == entryId }
+        let prior = match.flatMap { entry in entry.items.indices.contains(index) ? entry.items[index] : nil }
+        if pending.payload.correctionOp == "remove" {
+            return [
+                ConfirmLine(
+                    id: entryId,
+                    name: prior?.name ?? pending.payload.reason ?? "",
+                    foodId: prior?.foodId ?? "",
+                    grams: prior?.grams ?? 0,
+                    per100g: prior.flatMap { ContextBuilder.per100g(of: $0) } ?? .zero,
+                    source: prior?.source ?? "diary",
+                    citationUrl: nil,
+                    portionLabel: nil,
+                    family: prior?.ingredientFamily ?? "",
+                    entryId: entryId,
+                    itemIndex: index,
+                    priorGrams: prior?.grams
+                )
+            ]
         }
-        guard let candidate = response.candidates.first else { return }
-        let grams = candidate.grams ?? 100
-        let macros: MacroTotals
-        if let food = fetchFood(id: candidate.foodId) {
-            macros = MacroMath.scale(per100g: food.per100g, grams: grams)
-            pendingFoodId = food.id
-            pendingFamily = food.ingredientFamily
-        } else {
-            // Fail closed on macros: no invented numbers — skip confirm sheet.
-            return
+        return pending.payload.resolvedItems.map { item in
+            ConfirmLine(
+                id: "\(entryId)-\(index)",
+                name: item.displayName,
+                foodId: item.foodId,
+                grams: item.grams,
+                per100g: item.per100g,
+                source: item.source,
+                citationUrl: item.citationUrl,
+                portionLabel: item.portionLabel,
+                family: item.family ?? prior?.ingredientFamily ?? "",
+                entryId: entryId,
+                itemIndex: index,
+                priorGrams: prior?.grams
+            )
         }
-        pendingName = candidate.displayName
-        pendingBaseGrams = grams
-        pendingGrams = grams
-        pendingCalories = macros.calories
-        pendingProtein = macros.proteinG
-        pendingCarbs = macros.carbsG
-        pendingFat = macros.fatG
-        pendingMealSlot = MealTypeCatalog.suggestedName(from: mealTypes.filter(\.isEnabled)) ?? ""
-        showConfirm = true
-    }
-
-    private func fetchFood(id: String) -> Food? {
-        var descriptor = FetchDescriptor<Food>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return try? modelContext.fetch(descriptor).first
     }
 
     private func confirmPending() {
-        let scale = pendingBaseGrams > 0 ? pendingGrams / pendingBaseGrams : 1
-        let item = MealEntryItem(
-            name: pendingName,
-            grams: pendingGrams,
-            calories: pendingCalories * scale,
-            proteinG: pendingProtein * scale,
-            carbsG: pendingCarbs * scale,
-            fatG: pendingFat * scale,
-            foodId: pendingFoodId,
-            ingredientFamily: pendingFamily
-        )
+        if pendingCorrectionOp == "remove", let line = pendingLines.first, let entryId = line.entryId {
+            if let entry = entries.first(where: { $0.uuid.uuidString == entryId }) {
+                let index = line.itemIndex ?? 0
+                if entry.items.indices.contains(index) {
+                    let item = entry.items[index]
+                    entry.items.remove(at: index)
+                    modelContext.delete(item)
+                }
+                if entry.items.isEmpty {
+                    modelContext.delete(entry)
+                }
+            }
+            finishConfirm(reply: "removed.")
+            return
+        }
+
+        if let line = pendingLines.first, let entryId = line.entryId,
+           let entry = entries.first(where: { $0.uuid.uuidString == entryId }) {
+            let index = line.itemIndex ?? 0
+            guard entry.items.indices.contains(index) else { return }
+            let item = entry.items[index]
+            let macros = line.macros
+            let oldGrams = item.grams
+            item.name = line.name
+            item.grams = line.grams
+            item.calories = macros.calories
+            item.proteinG = macros.proteinG
+            item.carbsG = macros.carbsG
+            item.fatG = macros.fatG
+            item.foodId = line.foodId
+            item.ingredientFamily = line.family
+            item.source = line.source
+            RecentCorrectionStore.append(
+                text: "\(line.name): \(Int(oldGrams))g → \(Int(line.grams))g",
+                dayKey: todayKey
+            )
+            let left = MacroTotals.remaining(target: target, eaten: eaten)
+            finishConfirm(reply: "updated — \(Int(macros.calories)) cal. \(Int(left.calories)) cal left.")
+            return
+        }
+
+        let items = pendingLines.map { line in
+            let macros = line.macros
+            return MealEntryItem(
+                name: line.name,
+                grams: line.grams,
+                calories: macros.calories,
+                proteinG: macros.proteinG,
+                carbsG: macros.carbsG,
+                fatG: macros.fatG,
+                foodId: line.foodId,
+                ingredientFamily: line.family,
+                source: line.source
+            )
+        }
+        guard !items.isEmpty else { return }
         let entry = MealEntry(
             dayKey: todayKey,
             mealSlot: pendingMealSlot.isEmpty ? nil : pendingMealSlot,
-            originalUserText: pendingName,
+            originalUserText: items.map(\.name).joined(separator: ", "),
             confirmed: true,
-            items: [item]
+            items: []
         )
         modelContext.insert(entry)
-        showConfirm = false
-        let left = MacroTotals.remaining(target: target, eaten: MacroTotals(
-            calories: eaten.calories + item.calories,
-            proteinG: eaten.proteinG + item.proteinG,
-            carbsG: eaten.carbsG + item.carbsG,
-            fatG: eaten.fatG + item.fatG
-        ))
+        for item in items {
+            item.entry = entry
+            entry.items.append(item)
+        }
+        let added = items.reduce(MacroTotals.zero) { partial, item in
+            partial + MacroTotals(
+                calories: item.calories,
+                proteinG: item.proteinG,
+                carbsG: item.carbsG,
+                fatG: item.fatG
+            )
+        }
+        let left = MacroTotals.remaining(
+            target: target,
+            eaten: eaten + added
+        )
+        let names = items.map(\.name).joined(separator: " and ")
         let level = settings.first?.assistanceLevel ?? .fullAssist
         let reply: String
-        if DialPolicy.showsBenefitAfterLog(level) {
-            reply = "logged — ~\(Int(item.calories)) cal banked. \(Int(left.calories)) cal left."
-        } else if level == .quiet {
-            reply = "logged. \(Int(left.calories)) left."
+        if level == .quiet {
+            reply = "logged \(names). \(Int(left.calories)) left."
         } else {
-            reply = "logged. \(Int(left.calories)) cal left."
+            reply = "logged \(names). \(Int(added.calories)) cal. \(Int(left.calories)) cal left."
         }
+        finishConfirm(reply: reply)
+    }
+
+    private func finishConfirm(reply: String) {
+        showConfirm = false
+        pendingLines = []
+        pendingCorrectionOp = nil
+        ConversationMemoryStore.clearOpenDraft(in: modelContext)
         messages.append(ChatBubble(role: .capy, text: reply))
         ConversationMemoryStore.appendTurn(role: .assistant, text: reply, in: modelContext)
     }
 }
 
 struct ChatBubble: Identifiable {
-    enum Role { case capy, user }
+    enum Role { case capy, user, error }
     let id: UUID
     let role: Role
     let text: String
+    var chips: [ClarifyOptionDTO] = []
+    var suggestions: [SuggestionOptionDTO] = []
+    var resolvedNames: [String] = []
+    var waitingNames: [String] = []
+    var manualLog: Bool = false
+    var freeTextGrams: Bool = false
+    var chipAction: String = "pick_candidate"
 
-    init(id: UUID = UUID(), role: Role, text: String) {
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        text: String,
+        chips: [ClarifyOptionDTO] = [],
+        suggestions: [SuggestionOptionDTO] = [],
+        resolvedNames: [String] = [],
+        waitingNames: [String] = [],
+        manualLog: Bool = false,
+        freeTextGrams: Bool = false,
+        chipAction: String = "pick_candidate"
+    ) {
         self.id = id
         self.role = role
         self.text = text
+        self.chips = chips
+        self.suggestions = suggestions
+        self.resolvedNames = resolvedNames
+        self.waitingNames = waitingNames
+        self.manualLog = manualLog
+        self.freeTextGrams = freeTextGrams
+        self.chipAction = chipAction
     }
 }

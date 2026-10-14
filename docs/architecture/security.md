@@ -12,7 +12,7 @@ Local pattern: `.env` (gitignored) for emulator; see [../runbooks/local-dev.md](
 
 ## Auth
 
-- Firebase Auth: **Sign in with Apple** + **Google Sign-In**
+- Firebase Auth: **Google Sign-In** + **email/password** (Sign in with Apple deferred). Password policy is Firebase's default (min 6 chars)
 - Callable Functions validate ID token
 - No anonymous auth for V1 dogfood API (Sign in required)
 

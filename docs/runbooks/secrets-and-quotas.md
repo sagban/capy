@@ -17,9 +17,10 @@ Production path uses Vertex AI on the same project. Cloud Functions Application 
 1. Enable **Vertex AI API** on `capy-dogfood`
 2. Grant the Functions runtime service account **Vertex AI User** (`roles/aiplatform.user`)
    - Default compute SA: `PROJECT_NUMBER-compute@developer.gserviceaccount.com`
-3. Model: `gemini-2.0-flash-001` (override with env `VERTEX_GEMINI_MODEL`)
+3. Model: `gemini-2.5-flash` (override with env `VERTEX_GEMINI_MODEL`; dogfood has no 2.0-flash in us-central1)
+4. Enable Google Search grounding for the `web_search` tool (Vertex)
 
-Do **not** put an AI Studio `GEMINI_API_KEY` in the function for prod. Local emulator uses Vertex if ADC is available (`gcloud auth application-default login`); otherwise heuristics run.
+Do **not** put an AI Studio `GEMINI_API_KEY` in the function for prod. Local emulator uses Vertex if ADC is available (`gcloud auth application-default login`). Unit tests set `CAPY_MOCK_AGENT=1` (no live Vertex). Live path **fails closed** if Vertex is unavailable — no keyword intent fallback.
 
 ## Secrets (Secret Manager)
 
@@ -51,9 +52,9 @@ npx -y firebase-tools@latest deploy --only functions --project capy-dogfood
 
 ## USDA behavior
 
-1. Prefer Foundation + SR Legacy; reject incomplete nutrient records
-2. Cache hits in-process; miss cache for the calendar day
-3. Seed catalog covers top foods; USDA is fallback only
+1. `search_food` pulls seed + USDA Branded/Foundation/SR into a pool; `food_search` ranks for logging confidence (not “branded first”)
+2. Incomplete nutrient records dropped; same-day miss cache when the pool is empty
+3. Low confidence / unresolved query tokens → `suggestWebSearch` (resolve via web, then search again)
 
 ## Quotas (dogfood)
 

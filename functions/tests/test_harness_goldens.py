@@ -1,28 +1,23 @@
-"""Emulator / unit goldens for tools + multi-turn memory (#38)."""
+"""ReAct harness goldens — CAPY_MOCK_AGENT=1 (see conftest)."""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import os
 
-import pytest
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from graph import run_interpret  # noqa: E402
-from tools import clear_miss_cache, run_tool  # noqa: E402
-from schemas import request_from_dict  # noqa: E402
+from graph import run_interpret
+from messaging import GRACEFUL_FAILURE, sanitize_assistant_message
+from schemas import request_from_dict
+from tools import clear_miss_cache, run_tool
 
 
 def _base_payload(**overrides):
-    data = {
-        "utterance": "rice and dal",
+    payload = {
+        "utterance": "I had rice and dal",
         "timezone": "America/Chicago",
         "dayKey": "2026-10-12",
         "preferenceContext": {
-            "likes": ["high protein"],
-            "dislikes": ["cilantro"],
+            "likes": [],
+            "dislikes": [],
             "allergies": [],
             "diets": [],
         },
@@ -38,162 +33,46 @@ def _base_payload(**overrides):
             "remainingSource": "clientComputed",
         },
         "longTermMemory": [],
-        "conversation": {
-            "summary": "",
-            "recentTurns": [],
-            "workingMemory": None,
-        },
+        "conversation": {"summary": "", "recentTurns": [], "workingMemory": None},
         "context": {"assistanceLevel": "fullAssist", "lastIntent": None},
     }
-    data.update(overrides)
-    return data
+    payload.update(overrides)
+    return payload
 
 
-def test_log_meal_finds_seed_foods():
+def test_mock_agent_enabled():
+    assert os.environ.get("CAPY_MOCK_AGENT") == "1"
+
+
+def test_greeting_is_not_log_meal():
+    from harness.mock_turn import push_mock_turns
+
     clear_miss_cache()
-    out = run_interpret(_base_payload(utterance="I had rice and dal"))
-    assert out["intent"] in {"log_meal", "clarify"}
-    ids = {c["foodId"] for c in out.get("candidates") or []}
-    # USDA rice and/or overlay dal
-    assert ids, out
-    assert any(
-        "rice" in (c.get("displayName") or "").lower()
-        or c.get("foodId", "").startswith("seed_dal")
-        or "dal" in (c.get("displayName") or "").lower()
-        for c in out.get("candidates") or []
-    )
+    push_mock_turns([{"kind": "text", "text": "Hello! How can I help you?"}])
+    out = run_interpret(_base_payload(utterance="Hey"))
+    assert out["intent"] == "unknown"
+    assert not out.get("candidates")
+    assert out.get("pendingAction") is None
+    assert out["assistantMessage"] == "Hello! How can I help you?"
 
 
-def test_clarify_followup_uses_working_memory():
+def test_search_food_rice_ranks_staple():
     clear_miss_cache()
-    first = run_interpret(
-        _base_payload(utterance="some rice")
-    )
-    assert first["intent"] == "clarify"
-    assert first.get("clarifyingQuestion")
-    follow = run_interpret(
-        _base_payload(
-            utterance="half",
-            conversation={
-                "summary": "awaiting portion on rice",
-                "recentTurns": [
-                    {"role": "user", "text": "some rice"},
-                    {"role": "assistant", "text": first["assistantMessage"]},
-                ],
-                "workingMemory": {
-                    "pendingIntent": "clarify",
-                    "clarifyingQuestion": first["clarifyingQuestion"],
-                    "candidates": first.get("candidates")
-                    or [
-                        {
-                            "foodId": "usda_168878",
-                            "displayName": "Rice, white, long-grain, regular, enriched, cooked",
-                            "grams": None,
-                        }
-                    ],
-                },
-            },
-        )
-    )
-    assert follow["intent"] == "log_meal"
-    assert follow["candidates"]
-    assert follow["candidates"][0].get("grams") == 75.0
+    req = request_from_dict(_base_payload())
+    result = run_tool("search_food", req, query="rice", limit=8)
+    assert result["cache"] == "hit"
+    names = [r["displayName"].lower() for r in result["results"]]
+    assert names
+    assert names[0].startswith("rice")
+    assert "babyfood" not in names[0]
+    assert any("cooked" in n for n in names[:3])
 
 
-def test_what_did_i_eat_uses_today_tool_context():
+def test_search_hi_does_not_match_chicken():
     clear_miss_cache()
-    req = request_from_dict(
-        _base_payload(
-            utterance="what did I eat?",
-            diaryContext={
-                "today": [{"name": "Greek yogurt", "mealSlot": "Breakfast", "grams": 200}],
-                "previousDays": [],
-                "remaining": {
-                    "calories": 1800,
-                    "proteinG": 120,
-                    "carbsG": 180,
-                    "fatG": 55,
-                },
-                "remainingSource": "clientComputed",
-            },
-        )
-    )
-    today = run_tool("get_today_food_log", req)
-    assert today["entries"][0]["name"] == "Greek yogurt"
-
-
-def test_vegetarian_suggest_filters_poultry():
-    clear_miss_cache()
-    out = run_interpret(
-        _base_payload(
-            utterance="suggest something for dinner",
-            preferenceContext={
-                "likes": [],
-                "dislikes": [],
-                "allergies": [],
-                "diets": ["vegetarian"],
-            },
-        )
-    )
-    assert out["intent"] in {"suggest_meal", "unknown"}
-    for c in out.get("candidates") or []:
-        assert "chicken" not in c["displayName"].lower()
-        assert not c["foodId"].startswith("seed_chicken")
-
-
-def test_long_term_memory_add_proposal():
-    clear_miss_cache()
-    out = run_interpret(
-        _base_payload(utterance="remember I don't have a microwave at work")
-    )
-    assert out["intent"] == "update_memory"
-    props = out.get("memoryProposals") or []
-    assert props and props[0]["action"] == "add"
-    assert "microwave" in (props[0].get("text") or "").lower()
-
-
-def test_forget_memory_delete_proposal():
-    clear_miss_cache()
-    out = run_interpret(
-        _base_payload(
-            utterance="forget the microwave thing",
-            longTermMemory=[
-                {"id": "mem_1", "text": "No microwave at work"},
-                {"id": "mem_2", "text": "Trains on Tuesdays"},
-            ],
-        )
-    )
-    assert out["intent"] == "update_memory"
-    props = out.get("memoryProposals") or []
-    assert any(p.get("action") == "delete" and p.get("id") == "mem_1" for p in props)
-
-
-def test_long_thread_window_payload_still_runs():
-    turns = []
-    for i in range(20):
-        turns.append({"role": "user", "text": f"note {i}"})
-        turns.append({"role": "assistant", "text": f"ok {i}"})
-    out = run_interpret(
-        _base_payload(
-            utterance="I had oats",
-            conversation={
-                "summary": "user logged many snacks · prior intents log_meal",
-                "recentTurns": turns[-12:],
-                "workingMemory": None,
-            },
-        )
-    )
-    assert out["intent"] in {"log_meal", "clarify"}
-    assert "assistantMessage" in out
-
-
-def test_no_trusted_macros_in_response():
-    out = run_interpret(_base_payload(utterance="I had chicken breast 150g"))
-    blob = str(out)
-    for c in out.get("candidates") or []:
-        assert "calories" not in c
-        assert "proteinG" not in c
-    assert "phase0_scaffold" not in blob
+    req = request_from_dict(_base_payload())
+    result = run_tool("search_food", req, query="hi", limit=8)
+    assert result["results"] == [] or result["cache"] == "miss"
 
 
 def test_search_food_seed_hit():
@@ -202,3 +81,36 @@ def test_search_food_seed_hit():
     result = run_tool("search_food", req, query="paneer")
     assert result["cache"] in {"hit", "usda"}
     assert any(r["foodId"] == "seed_paneer" for r in result["results"])
+
+
+def test_sanitize_strips_tech_and_ids():
+    dirty = "Vertex Gemini 404 usda_168878 https://example.com harness error (503)"
+    clean = sanitize_assistant_message(dirty)
+    assert "vertex" not in clean.lower()
+    assert "usda_" not in clean.lower()
+    assert "503" not in clean
+    assert "http" not in clean.lower()
+
+
+def test_fail_closed_message_has_no_stack():
+    assert "vertex" not in GRACEFUL_FAILURE.lower()
+    assert "firebase" not in GRACEFUL_FAILURE.lower()
+
+
+def test_scale_portion_tool():
+    clear_miss_cache()
+    req = request_from_dict(_base_payload())
+    search = run_tool("search_food", req, query="rice", limit=1)
+    fid = search["results"][0]["foodId"]
+    scaled = run_tool("scale_portion", req, foodId=fid, grams=200)
+    assert "scaled" in scaled
+    assert scaled["scaled"]["calories"] > 0
+
+
+def test_chat_text_is_not_a_tool_outcome():
+    from harness.mock_turn import push_mock_turns
+
+    push_mock_turns([{"kind": "text", "text": "Nothing logged yet."}])
+    out = run_interpret(_base_payload(utterance="what did I have"))
+    assert out["pendingAction"] is None
+    assert out["intent"] == "unknown"

@@ -7,8 +7,10 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+functions/.secret.local
 GoogleService-Info.plist
 **/Secrets.xcconfig
+Config/LocalEmulatorHost.xcconfig
 *.pem
 
 # Python

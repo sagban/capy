@@ -1,9 +1,5 @@
-#include "Shared.xcconfig"
-
-// Scheme: "capy Prod" → deployed Cloud Functions on capy-dogfood.
+// Scheme: "capy Prod" → deployed callables (see AppEnvironment.prod).
 CAPY_ENVIRONMENT = prod
-CAPY_USE_FUNCTIONS_EMULATOR = NO
-
 INFOPLIST_KEY_CAPYEnvironment = prod
-INFOPLIST_KEY_CAPYUseFunctionsEmulator = NO
-// No CAPY_LOCAL flag — EnvironmentConfig defaults to prod.
+CAPYEmulatorHost =
+INFOPLIST_KEY_CAPYEmulatorHost =

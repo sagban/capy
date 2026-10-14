@@ -1,66 +1,117 @@
 import SwiftUI
 import SwiftData
 
+struct ConfirmLine: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var foodId: String
+    var grams: Double
+    var per100g: MacroTotals
+    var source: String
+    var citationUrl: String?
+    var portionLabel: String?
+    var family: String
+    var entryId: String?
+    var itemIndex: Int?
+    var priorGrams: Double?
+
+    var macros: MacroTotals {
+        MacroMath.scale(per100g: per100g, grams: grams)
+    }
+}
+
+enum SourceBadge {
+    static func title(for source: String) -> String? {
+        switch source {
+        case "estimate": "estimate"
+        case "web": "web"
+        default: nil
+        }
+    }
+}
+
+enum ConfirmMath {
+    static func totals(_ lines: [ConfirmLine]) -> MacroTotals {
+        lines.reduce(.zero) { partial, line in
+            partial + line.macros
+        }
+    }
+}
+
 struct MealConfirmationSheet: View {
-    let name: String
-    @Binding var grams: Double
-    var baseGrams: Double = 100
+    @Binding var lines: [ConfirmLine]
     @Binding var mealSlot: String
-    /// Macro totals for `baseGrams` (from Swift Core × catalog per100g).
-    let calories: Double
-    let protein: Double
-    let carbs: Double
-    let fat: Double
+    var correctionOp: String? = nil
     let onConfirm: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MealType.sortOrder) private var mealTypes: [MealType]
 
-    private var scale: Double {
-        guard baseGrams > 0 else { return 1 }
-        return grams / baseGrams
-    }
-
     private var enabledMealTypes: [MealType] {
         mealTypes.filter(\.isEnabled)
     }
 
+    private var isCorrection: Bool { lines.contains { $0.entryId != nil } || correctionOp == "remove" }
+    private var isRemoval: Bool { correctionOp == "remove" }
+    private var totals: MacroTotals { ConfirmMath.totals(lines) }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Meal") {
-                    Text(name)
-                    if !enabledMealTypes.isEmpty {
-                        Picker("Meal type", selection: $mealSlot) {
-                            ForEach(enabledMealTypes) { type in
-                                Text(type.name).tag(type.name)
+                if isRemoval {
+                    Section("Remove") {
+                        Text(lines.first?.name ?? "This item")
+                    }
+                } else {
+                    Section("Meal") {
+                        if !enabledMealTypes.isEmpty && !isCorrection {
+                            Picker("Meal type", selection: $mealSlot) {
+                                ForEach(enabledMealTypes) { type in
+                                    Text(type.name).tag(type.name)
+                                }
+                            }
+                        }
+                        ForEach($lines) { $line in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(line.name)
+                                if let portion = line.portionLabel, !portion.isEmpty {
+                                    Text(portion)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.capy.textSecondary)
+                                }
+                                sourceBadge(line)
+                                Stepper(value: $line.grams, in: 5...2000, step: 5) {
+                                    Text("\(Int(line.grams)) g")
+                                }
+                                if let prior = line.priorGrams {
+                                    Text("\(Int(prior)) g → \(Int(line.grams)) g")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.capy.textSecondary)
+                                }
                             }
                         }
                     }
-                    Stepper(value: $grams, in: 50...800, step: 10) {
-                        Text("\(Int(grams)) g")
+                    Section("Macros") {
+                        macroRow("Calories", Int(totals.calories.rounded()))
+                        macroRow("Protein", Int(totals.proteinG.rounded()), suffix: " g")
+                        macroRow("Carbs", Int(totals.carbsG.rounded()), suffix: " g")
+                        macroRow("Fat", Int(totals.fatG.rounded()), suffix: " g")
                     }
                 }
-                Section("Macros (approx)") {
-                    LabeledContent("Calories", value: "\(Int((calories * scale).rounded()))")
-                    LabeledContent("Protein", value: "\(Int((protein * scale).rounded())) g")
-                    LabeledContent("Carbs", value: "\(Int((carbs * scale).rounded())) g")
-                    LabeledContent("Fat", value: "\(Int((fat * scale).rounded())) g")
-                }
             }
-            .navigationTitle("Confirm")
+            .navigationTitle(isRemoval ? "Remove" : (isCorrection ? "Correct" : "Confirm"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Log it") {
+                    Button(isRemoval ? "Remove" : (isCorrection ? "Update" : "Log it")) {
                         onConfirm()
                         dismiss()
                     }
-                    .disabled(mealSlot.isEmpty && !enabledMealTypes.isEmpty)
+                    .disabled(!isCorrection && mealSlot.isEmpty && !enabledMealTypes.isEmpty)
                     .fontWeight(.semibold)
                 }
             }
@@ -70,6 +121,26 @@ struct MealConfirmationSheet: View {
                     mealSlot = MealTypeCatalog.suggestedName(from: enabledMealTypes) ?? enabledMealTypes.first?.name ?? ""
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func sourceBadge(_ line: ConfirmLine) -> some View {
+        if let title = SourceBadge.title(for: line.source) {
+            if line.source == "web", let raw = line.citationUrl, let url = URL(string: raw) {
+                Link(title, destination: url)
+                    .font(.caption)
+            } else {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.capy.warning)
+            }
+        }
+    }
+
+    private func macroRow(_ label: String, _ value: Int, suffix: String = "") -> some View {
+        LabeledContent(label) {
+            Text("\(value)\(suffix)")
         }
     }
 }

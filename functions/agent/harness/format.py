@@ -86,10 +86,7 @@ def menu_line(outcome: dict[str, Any]) -> str:
     return f"No menu names for {venue}."
 
 
-def format_message(*, draft: str, outcome: dict[str, Any]) -> str:
-    text = sanitize_assistant_message(draft, allow_empty=True)
-    if text:
-        return text
+def _factual_supplement(outcome: dict[str, Any]) -> str:
     return (
         summary_from_options(outcome)
         or clarify_question(outcome)
@@ -97,3 +94,15 @@ def format_message(*, draft: str, outcome: dict[str, Any]) -> str:
         or memory_line(outcome)
         or menu_line(outcome)
     )
+
+
+def format_message(*, draft: str, outcome: dict[str, Any]) -> str:
+    text = sanitize_assistant_message(draft, allow_empty=True)
+    supplement = _factual_supplement(outcome)
+    if text and supplement:
+        if supplement.strip() in text or text in supplement:
+            return text
+        return f"{text.rstrip()}\n\n{supplement}"
+    if text:
+        return text
+    return supplement

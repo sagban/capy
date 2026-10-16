@@ -1,8 +1,8 @@
-"""Slot budget: stated, median of 3 days, even split, zero remaining."""
+"""Slot budget: stated, median of 3 days, weighted defaults, flex multiplier, snacks."""
 
 from schemas import request_from_dict
 
-from agent.harness.meal_budget import fit_label, slot_budget
+from agent.harness.meal_budget import fit_label, normalize_flex_multiplier, slot_budget
 
 
 def _req(today=None, previous=None, remaining=None):
@@ -70,22 +70,39 @@ def test_dinner_with_only_snacks_logged_uses_what_is_left():
     assert budget["proteinG"] == 78
 
 
-def test_breakfast_with_nothing_logged_splits_the_day():
+def test_breakfast_early_day_gets_modest_share_not_third_of_day():
     budget = slot_budget(
         _req(remaining={"calories": 2000, "proteinG": 140, "carbsG": 200, "fatG": 65}),
         "breakfast",
         None,
     )
-    assert budget["calories"] == 2000 / 3
-    assert abs(budget["proteinG"] - 140 / 3) < 0.01
+    assert budget["calories"] == 2000 * 0.22
+    assert budget["calories"] < 2000 / 3
+    assert abs(budget["proteinG"] - 140 * 0.22) < 0.01
 
 
-def test_even_split_counts_requested_slot():
+def test_lunch_after_breakfast_gets_moderate_share_not_half_of_remaining():
     today = [_item("breakfast", 400, 20)]
     budget = slot_budget(_req(today=today), "lunch", None)
-    # breakfast logged; lunch + dinner left → 1600 / 2
-    assert budget["calories"] == 800
-    assert budget["proteinG"] == 40
+    assert budget["calories"] == 1600 * 0.35
+    assert budget["proteinG"] == 80 * 0.35
+    assert budget["calories"] < 800
+
+
+def test_snacks_get_small_allowance_not_main_meal_share():
+    budget = slot_budget(_req(), "Snacks", None)
+    assert budget["calories"] == 1600 * 0.12
+    assert budget["calories"] <= 250
+    assert budget["calories"] < 1600 * 0.22
+
+
+def test_snack_allowance_caps_at_max():
+    budget = slot_budget(
+        _req(remaining={"calories": 3000, "proteinG": 200, "carbsG": 300, "fatG": 80}),
+        "snack",
+        None,
+    )
+    assert budget["calories"] == 250
 
 
 def test_zero_remaining_is_zero_and_over():
@@ -104,3 +121,38 @@ def test_under_calorie_target_is_within():
 
 def test_smaller_meal_is_within_even_with_low_protein():
     assert fit_label(350, 10, {"calories": 700, "proteinG": 40}) == "within"
+
+
+def test_flex_multiplier_scales_guide():
+    base = slot_budget(_req(), "lunch", None)
+    flexed = slot_budget(_req(), "lunch", None, flex_multiplier=1.5)
+    assert flexed["calories"] == base["calories"] * 1.5
+    assert flexed.get("guideCalories") == base["calories"]
+    assert flexed.get("flexMultiplier") == 1.5
+
+
+def test_flex_multiplier_capped_at_remaining():
+    flexed = slot_budget(
+        _req(remaining={"calories": 500, "proteinG": 40, "carbsG": 50, "fatG": 15}),
+        "lunch",
+        None,
+        flex_multiplier=3.0,
+    )
+    assert flexed["calories"] == 500
+
+
+def test_normalize_flex_multiplier_rejects_invalid():
+    assert normalize_flex_multiplier(None) == 1.0
+    assert normalize_flex_multiplier(0.5) == 1.0
+    assert normalize_flex_multiplier("bad") == 1.0
+
+
+def test_stated_budget_ignores_flex_multiplier():
+    budget = slot_budget(
+        _req(),
+        "lunch",
+        {"calories": 1200, "proteinG": 70},
+        flex_multiplier=1.5,
+    )
+    assert budget["calories"] == 1200
+    assert "flexMultiplier" not in budget

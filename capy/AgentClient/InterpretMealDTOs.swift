@@ -67,11 +67,19 @@ struct DiaryEntryDTO: Codable, Equatable, Sendable {
     var ingredientFamily: String? = nil
 }
 
+struct MealPlanSlotDTO: Codable, Equatable, Sendable {
+    var name: String
+    var sortOrder: Int
+    var enabled: Bool
+}
+
 struct DiaryContextDTO: Codable, Equatable, Sendable {
     var today: [DiaryEntryDTO]
     var previousDays: [DiaryDaySummaryDTO]
     var remaining: MacroTotals
     var remainingSource: String
+    /// Enabled meal types in order (user plan for the day).
+    var mealPlan: [MealPlanSlotDTO] = []
 }
 
 struct LongTermMemoryNoteDTO: Codable, Equatable, Sendable {
@@ -382,9 +390,11 @@ struct SuggestionOptionDTO: Codable, Equatable, Sendable {
 struct SuggestionBudgetDTO: Codable, Equatable, Sendable {
     var calories: Double?
     var proteinG: Double?
+    var carbsG: Double?
+    var fatG: Double?
 
     var budget: SuggestionBudget? {
         guard let calories, calories > 0 else { return nil }
-        return SuggestionBudget(calories: calories, proteinG: proteinG)
+        return SuggestionBudget(calories: calories, proteinG: proteinG, carbsG: carbsG, fatG: fatG)
     }
 }

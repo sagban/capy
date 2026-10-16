@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from agent.harness.meal_budget import slot_budget, usual_foods
+from agent.harness.meal_slots import meal_plan_from_context, planned_slot_names
 from schemas import InterpretMealRequest
-
-_SLOTS = ("breakfast", "lunch", "dinner")
 
 
 def _today_families(req: InterpretMealRequest) -> list[str]:
@@ -31,12 +30,14 @@ def semantic_block(req: InterpretMealRequest) -> dict[str, Any]:
                 "entries": [e.model_dump() for e in (day.entries or [])],
             }
         )
+    plan = planned_slot_names(req)
     return {
         "dayKey": req.dayKey,
         "timezone": req.timezone,
         "remaining": req.diaryContext.remaining.model_dump(),
-        "slotBudgets": {slot: slot_budget(req, slot, None) for slot in _SLOTS},
-        "usualFoods": {slot: usual_foods(req, slot) for slot in _SLOTS},
+        "mealPlan": [s.model_dump() for s in meal_plan_from_context(req.diaryContext)],
+        "slotBudgets": {slot: slot_budget(req, slot, None) for slot in plan},
+        "usualFoods": {slot: usual_foods(req, slot) for slot in plan},
         "today": [e.model_dump() for e in req.diaryContext.today],
         "todayFamilies": _today_families(req),
         "previousDays": previous,

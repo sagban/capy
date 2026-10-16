@@ -14,11 +14,13 @@ enum VerifyOutcome: Equatable, Sendable {
 }
 
 /// What a suggestion was built for: a calorie ceiling and optional protein floor
-/// (stated, else the slot's typical meal, else an even split of what's left).
+/// (stated, else the slot's typical meal, else weighted slot defaults on what's left).
 /// Not the whole day's remainder. There is no calorie floor.
 struct SuggestionBudget: Equatable, Sendable {
     var calories: Double
     var proteinG: Double?
+    var carbsG: Double?
+    var fatG: Double?
 }
 
 /// Deterministic suggestion verifier. LLM never supplies trusted macros.
@@ -61,6 +63,12 @@ enum SuggestionVerifier {
         let calorieCap = min(max(remaining.calories, 0), budget?.calories ?? remaining.calories)
         if proposed.calories > calorieCap {
             return .rejected(reason: .caloriesExceedRemaining, computed: proposed)
+        }
+        if let carbsCap = budget?.carbsG, proposed.carbsG > min(carbsCap, remaining.carbsG) {
+            return .rejected(reason: .carbsOutOfBand, computed: proposed)
+        }
+        if let fatCap = budget?.fatG, proposed.fatG > min(fatCap, remaining.fatG) {
+            return .rejected(reason: .fatOutOfBand, computed: proposed)
         }
         return .accepted(proposed)
     }

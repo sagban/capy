@@ -308,13 +308,14 @@ def compose_suggestions(
     *,
     meal_slot: str | None,
     budget: dict[str, Any] | None,
+    appetite: str = "normal",
     drafts: list[dict[str, Any]],
     memory: Optional[WorkingMemory] = None,
     proposals: Optional[list[MemoryProposal]] = None,
 ) -> dict[str, Any]:
     memory = memory or blank_memory(req)
     proposals = proposals or []
-    sized = slot_budget(req, meal_slot, budget)
+    sized = slot_budget(req, meal_slot, budget, appetite=appetite)
     blocked = list(req.preferenceContext.allergies or []) + list(req.preferenceContext.dislikes or [])
     diets = diets_for(req, proposals)
     families = _today_families(req)
@@ -418,7 +419,13 @@ def compose_suggestions(
         totals.proteinG = round(totals.proteinG, 2)
         totals.carbsG = round(totals.carbsG, 2)
         totals.fatG = round(totals.fatG, 2)
-        label = fit_label(totals.calories, totals.proteinG, sized)
+        label = fit_label(
+            totals.calories,
+            totals.proteinG,
+            sized,
+            carbs_g=totals.carbsG,
+            fat_g=totals.fatG,
+        )
         if float(req.diaryContext.remaining.calories) <= 0:
             label = "over"
         options.append(
@@ -432,10 +439,10 @@ def compose_suggestions(
             )
         )
     memory.lastSuggestionOptions = options
-    budget_out = {
-        "calories": float(sized["calories"] or 0),
-        **({"proteinG": float(sized["proteinG"])} if sized.get("proteinG") is not None else {}),
-    }
+    budget_out: dict[str, float] = {"calories": float(sized["calories"] or 0)}
+    for key in ("proteinG", "carbsG", "fatG"):
+        if sized.get(key) is not None:
+            budget_out[key] = float(sized[key])
     if not options:
         return chat(
             req,

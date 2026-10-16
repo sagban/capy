@@ -22,7 +22,7 @@ llm --infra x2---> respond
 | prepare | `agent/turn.py` | Validate the request. Build the memory pack. Clear `calls`, `model_text`, `outcome`, and `response` so a checkpoint cannot leak the last turn. |
 | llm | `agent/llm/model.py` | One Gemini call with every tool. Bad-args retry is inside this step (max 2). |
 | environment | `agent/harness/tools/` | LangChain `@tool` registry. Pydantic `args_schema` plus `InjectedToolArg` for request context; Gemini declarations and argument checks are derived from the tools. |
-| format | `agent/harness/format.py` | Shows the model's own sentence. No second model call. If a tool returned suggestions and the model wrote nothing, a factual line is filled from those options. |
+| format | `agent/harness/format.py` | Uses the model's reply when present; appends a factual line from tool outcomes (suggestions, clarify, memory) when that adds numbers the user needs. No second model call. |
 | respond | `agent/turn.py` | `normalize_outcome()`. Infra failure is `warnings: ["agent_unavailable"]` and an empty message. |
 
 LangGraph compiles with a checkpointer. `thread_id` is `{firebase_uid}:{conversation.threadId}` (default thread `default`). Tests use `MemorySaver`. Production uses Firestore collection `agentGraphCheckpoints` (client reads/writes denied). Checkpoints store orchestration history; diary and remaining macros still arrive fresh on each request.
@@ -58,7 +58,8 @@ Clarify options are **not** sent as UI chips. They stay in `workingMemory.resolv
 
 - Stated budget if the model passes one.
 - Else the median kcal and protein of that slot when 3 or more days exist in the diary.
-- Else remaining kcal and protein split across this meal and later main meals not yet logged. Breakfast and lunch that were never logged are missed, not still ahead, so dinner gets what is left.
+- Else plan-position weighted defaults on current remaining (last slot in `mealPlan` uses full remaining; earlier slots lighter). Slots come from `diaryContext.mealPlan` (client) or inferred diary `mealSlot` names — not a fixed breakfast/lunch/dinner list. Out-of-plan / snack-like slots use a small macro cap.
+- Guide budgets may be scaled by `appetite` on `compose_suggestions` (`light` | `normal` | `hearty`; LLM interprets intent). Explicit `budget` overrides the guide. Only remaining macros are a hard ceiling.
 - Always capped at remaining kcal. Remaining at or below 0 makes the budget 0 and every option `over`.
 
 After resolve: if search is ambiguous, keep the top hit (suggestions are not HITL). Drop an option that hits a diet (vegetarian/vegan/pescatarian from prefs, notes, or this chat), an allergy, a dislike, or a food family already logged today. Cap each item at a household serving (oils/fats ~2 tbsp; staples 3 cups/servings or 500 g). An option that is only oil/butter is dropped. `within` means kcal at or under the slot budget. There is no calorie floor. `over` is shown. Suggestions are chat, not cards. Logging one is a later `log_from_suggestion` call; that opens the meal confirm sheet.

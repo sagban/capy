@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Optional
 
+from agent.harness.meal_budget import AppetiteLevel
+
 from langchain_core.tools import BaseTool, InjectedToolArg, tool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -32,6 +34,8 @@ class DraftMeal(BaseModel):
 class StatedBudget(BaseModel):
     calories: Optional[float] = None
     proteinG: Optional[float] = None
+    carbsG: Optional[float] = None
+    fatG: Optional[float] = None
 
 
 class DraftOp(BaseModel):
@@ -60,6 +64,10 @@ class ComposeSuggestionsArgs(BaseModel):
     mealSlot: Optional[str] = None
     venue: Optional[str] = None
     budget: Optional[StatedBudget] = None
+    appetite: Optional[AppetiteLevel] = Field(
+        default=None,
+        description="light | normal | hearty — scales the harness guide from user intent. Ignored when budget is set.",
+    )
 
 
 class RepeatPriorMealArgs(BaseModel):
@@ -178,6 +186,7 @@ def compose_suggestions(
     mealSlot: Optional[str] = None,
     venue: Optional[str] = None,
     budget: Optional[StatedBudget] = None,
+    appetite: Optional[AppetiteLevel] = None,
     ctx: Ctx = None,
 ) -> dict[str, Any]:
     """Draft 2 or 3 different meals for the slot they asked for. Do not write calorie or macro totals.
@@ -186,13 +195,17 @@ def compose_suggestions(
         drafts: Meal options. Every item needs foodQuery, quantity, and unit as a sitting.
         mealSlot: Slot to size against when the user named one.
         venue: Restaurant or place, when relevant.
-        budget: Calories/protein only if the user stated a budget.
+        budget: Explicit macro ceiling (up to remaining). Overrides the guide when set.
+        appetite: light, normal, or hearty — from how much they want to eat; omit for normal.
     """
     del venue
+    from agent.harness.meal_budget import normalize_appetite
+
     return jobs.compose_suggestions(
         ctx["req"],
         meal_slot=mealSlot,
         budget=budget.model_dump() if budget else None,
+        appetite=normalize_appetite(appetite),
         drafts=[draft.model_dump() for draft in drafts],
         memory=ctx["memory"],
         proposals=ctx["proposals"],

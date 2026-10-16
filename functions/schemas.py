@@ -62,11 +62,20 @@ class DiaryDaySummary(BaseModel):
     entries: list[DiaryDayEntry] = Field(default_factory=list)
 
 
+class MealPlanSlot(BaseModel):
+    """User meal plan for the day (e.g. Meal 1…Meal 6). Order is sortOrder, not a fixed name list."""
+
+    name: str
+    sortOrder: int = 0
+    enabled: bool = True
+
+
 class DiaryContext(BaseModel):
     today: list[DiaryEntry] = Field(default_factory=list)
     previousDays: list[DiaryDaySummary] = Field(default_factory=list)
     remaining: MacroTotals
     remainingSource: str = "clientComputed"
+    mealPlan: list[MealPlanSlot] = Field(default_factory=list)
 
 
 class LongTermMemoryNote(BaseModel):
@@ -290,7 +299,7 @@ class InterpretMealResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     memoryProposals: list[MemoryProposal] = Field(default_factory=list)
     pendingAction: Optional[PendingAction] = None
-    # Slot budget the suggestion was built for (stated, else typical meal, else even split).
+    # Slot budget the suggestion was built for (stated, else typical meal, else weighted slot default).
     suggestionBudget: Optional[dict[str, float]] = None
     suggestionOptions: list[SuggestionOption] = Field(default_factory=list)
     workingMemory: Optional[WorkingMemory] = None

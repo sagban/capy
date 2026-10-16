@@ -33,7 +33,12 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
     // each item: { name, mealSlot, grams, entryId, itemIndex, foodId, source, per100g, ingredientFamily }
     // previousDays covers 14 days so slot medians and usual foods can be computed
     "remaining": { "calories": 820, "proteinG": 60, "carbsG": 90, "fatG": 25 },
-    "remainingSource": "clientComputed"
+    "remainingSource": "clientComputed",
+    "mealPlan": [
+      { "name": "Meal 1", "sortOrder": 0, "enabled": true },
+      { "name": "Meal 2", "sortOrder": 1, "enabled": true },
+      { "name": "Meal 4", "sortOrder": 3, "enabled": true }
+    ]
   },
   "longTermMemory": [
     { "id": "mem_1", "text": "Usually eats dinner after 9pm on weekdays" },
@@ -114,7 +119,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `intent` enum: `log_meal` | `suggest_meal` | `correct_meal` | `clarify` | `update_preference` | `update_memory` | `unknown`
 
-`suggestionBudget` (optional, on suggest): `{calories, proteinG?}` for that meal slot (stated, else the user's typical meal for the slot, else what is left split across this meal and later main meals). It is a ceiling, not a target to fill.
+`suggestionBudget` (optional, on suggest): `{calories, proteinG?, carbsG?, fatG?}` for that meal slot (explicit `budget` on the tool, else median for the slot when history allows, else plan-position weighted defaults, optionally scaled by `appetite`). Each field is a ceiling against remaining, not a target to fill.
 
 `pendingAction.type`: `clarify_portion` | `clarify_food` | `confirm_log` | `confirm_correction` | null
 
@@ -165,7 +170,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 | `resolve_meal` | Log items. Search, web nutrition, and portions run in code. |
 | `edit_draft` | Change the open confirm draft. |
 | `log_from_suggestion` | Copy a stored option into `confirm_log`. |
-| `compose_suggestions` | Non-blocking chat suggestions. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. |
+| `compose_suggestions` | Non-blocking chat suggestions. Optional `appetite` (`light` \| `normal` \| `hearty`) scales the guide; optional `budget` sets an explicit ceiling. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. |
 | `repeat_prior_meal` | Copy diary rows by `entryId`. |
 | `correct_entry` | `confirm_correction` for one `entryId` + `itemIndex`. |
 | `lookup_menu` | Menu names only. Same turn as any other tool; the graph does not call the model again. |

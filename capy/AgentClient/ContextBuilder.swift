@@ -58,11 +58,19 @@ enum ContextBuilder {
         }
         let remaining = MacroTotals.remaining(target: target, eaten: eaten)
 
+        let mealTypes = (try? modelContext.fetch(
+            FetchDescriptor<MealType>(sortBy: [SortDescriptor(\.sortOrder)])
+        )) ?? []
+        let mealPlan = mealTypes
+            .filter(\.isEnabled)
+            .map { MealPlanSlotDTO(name: $0.name, sortOrder: $0.sortOrder, enabled: true) }
+
         let diaryContext = DiaryContextDTO(
             today: todayDTO,
             previousDays: previousDays,
             remaining: remaining,
-            remainingSource: "clientComputed"
+            remainingSource: "clientComputed",
+            mealPlan: mealPlan
         )
 
         let ltm = LongTermMemoryStore.notesForContext(in: modelContext).map {

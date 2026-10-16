@@ -19,11 +19,6 @@ enum PendingActionType: String, Codable, Equatable, Sendable {
     case confirmCorrection = "confirm_correction"
 }
 
-struct ClientActionDTO: Codable, Equatable, Sendable {
-    var type: String
-    var id: String
-}
-
 enum MemoryProposalAction: String, Codable, Equatable, Sendable {
     case add
     case update
@@ -34,7 +29,6 @@ enum MemoryProposalAction: String, Codable, Equatable, Sendable {
 
 struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
     var utterance: String
-    var action: ClientActionDTO? = nil
     var timezone: String
     var dayKey: String
     var preferenceContext: PreferenceContextDTO
@@ -91,6 +85,7 @@ struct ConversationTurnDTO: Codable, Equatable, Sendable {
 }
 
 struct ConversationContextDTO: Codable, Equatable, Sendable {
+    var threadId: String = "default"
     var summary: String
     var recentTurns: [ConversationTurnDTO]
     var workingMemory: WorkingMemoryPayload?

@@ -19,7 +19,6 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
 ```json
 {
   "utterance": "make the rice half",
-  "action": null,
   "timezone": "America/Chicago",
   "dayKey": "2026-10-12",
   "preferenceContext": {
@@ -41,6 +40,7 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
     { "id": "mem_2", "text": "No microwave at work" }
   ],
   "conversation": {
+    "threadId": "default",
     "summary": "User logging lunch; awaiting portion confirm on rice.",
     "recentTurns": [
       { "role": "user", "text": "rice and dal" },
@@ -66,7 +66,9 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
 }
 ```
 
-`action` is set only by a chip or button: `{ "type": "pick_candidate" | "pick_portion" | "pick_option", "id": "..." }`. When it is set, `utterance` may be empty. The server does not parse free text to recover a tap.
+There is no `action` field. Follow-ups are the next `utterance`. Clarify labels live in `workingMemory.resolveQueue` for the model, not as UI chips.
+
+`conversation.threadId` defaults to `"default"` (LangGraph checkpoint thread is `{uid}:{threadId}`).
 
 `memorySnapshot` remains for #37 compatibility; clients should prefer `preferenceContext` + `diaryContext` + `longTermMemory` + `conversation`.
 
@@ -116,15 +118,15 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
 
 `pendingAction.type`: `clarify_portion` | `clarify_food` | `confirm_log` | `confirm_correction` | null
 
-`suggestionOptions` are not a pending action. Each is `{ id, title, reason, items[{foodId,displayName,grams,source,per100g,portionLabel}], totals, fit: within|over }`. Totals are harness-computed. A "Log this" button sends `pick_option`. The confirm sheet opens only for `confirm_log` or `confirm_correction`.
+`suggestionOptions` are stored for the next turn (`workingMemory.lastSuggestionOptions`). The Capy tab does not render them as cards. Totals are harness-computed. Logging one is a later `log_from_suggestion` tool call from chat, which opens the meal confirm sheet (`confirm_log`). `confirm_correction` also uses that sheet.
 
-`confirm_log` payload `resolvedItems`: `{ foodId, displayName, grams, per100g, source, citationUrl?, portionLabel? }`. `source`: `catalog` | `usda` | `usda_branded` | `web` | `diary`. `web` is a cited per-100g density that passed the Atwater check. The model does not multiply grams.
+`confirm_log` payload `resolvedItems`: `{ foodId, displayName, grams, per100g, source, citationUrl?, portionLabel? }`. `source`: `catalog` | `usda` | `usda_branded` | `web` | `diary`. `web` is a cited per-100g density that passed the Atwater check; the web worker may convert a cited serving to per 100 g. Code multiplies grams.
 
-`clarify_food` / `clarify_portion` payload `clarifyOptions`: `{ id, label, foodId?, grams? }`. Portion clarify may set `freeTextGrams` when the food has no household measure. A not-found clarify sets `manualLog`.
+`clarify_food` / `clarify_portion` carry `reason`, and may set `freeTextGrams` or `manualLog`. Candidate names are in `workingMemory.resolveQueue`, not tap chips. The next utterance continues resolve.
 
 `confirm_correction` payload: `entryId`, `itemIndex`, `correctionOp` `set_amount` | `replace` | `remove`, plus `resolvedItems` unless the op is `remove`.
 
-`assistantMessage` may be empty when chips, a sheet, or cards carry the turn. It never contains food ids, tool names, or HTTP details. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
+`assistantMessage` may be empty when the confirm sheet carries the turn. It never contains food ids, tool names, or HTTP details. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
 
 `memoryProposals.action`: `add` | `update` | `delete`. The client applies them. There is no `confirm_memory` pause.
 
@@ -163,11 +165,13 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
 | `resolve_meal` | Log items. Search, web nutrition, and portions run in code. |
 | `edit_draft` | Change the open confirm draft. |
 | `log_from_suggestion` | Copy a stored option into `confirm_log`. |
-| `compose_suggestions` | Non-blocking option cards. Every item needs a quantity and unit. |
+| `compose_suggestions` | Non-blocking chat suggestions. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. |
 | `repeat_prior_meal` | Copy diary rows by `entryId`. |
 | `correct_entry` | `confirm_correction` for one `entryId` + `itemIndex`. |
-| `lookup_menu` | Menu names only. At most once before `compose_suggestions`. |
+| `lookup_menu` | Menu names only. Same turn as any other tool; the graph does not call the model again. |
 | `save_memory` | `memoryProposals`. Can accompany any other tool. |
+
+Tools are LangChain `@tool` functions in `functions/agent/harness/tools/registry.py`. Executors live in `jobs.py`. Gemini sees those descriptions and JSON Schema. Request context is `InjectedToolArg`, not a model parameter. The system prompt in `functions/agent/llm/prompt.py` does not restate tool args.
 
 `search_food`, web nutrition, and `scale_portion` are internal. `scale_portion` requires grams. There is no same-day miss cache. `calc_macros` stays in Swift.
 

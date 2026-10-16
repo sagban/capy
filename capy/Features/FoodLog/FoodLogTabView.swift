@@ -197,12 +197,12 @@ struct FoodLogTabView: View {
     @ViewBuilder
     private func mealRow(_ entry: MealEntry) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            let names = entry.items.map(\.name).filter { !$0.isEmpty }
+            let names = entry.items.map { readableFoodName($0.name) }.filter { !$0.isEmpty }
             Text(names.isEmpty ? (entry.originalUserText ?? "Meal") : names.joined(separator: ", "))
                 .font(.headline)
                 .foregroundStyle(Color.capy.textPrimary)
             ForEach(Array(entry.items.enumerated()), id: \.offset) { _, item in
-                Text("\(item.name) · \(Int(item.grams)) g")
+                Text("\(Int(item.grams)) g  \(readableFoodName(item.name))")
                     .font(.caption)
                     .foregroundStyle(Color.capy.textSecondary)
             }

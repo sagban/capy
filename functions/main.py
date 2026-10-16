@@ -1,4 +1,4 @@
-"""Capy LangGraph ReAct harness entrypoint.
+"""Cloud Function entry. Agent = LLM + harness (`agent/`).
 
 Production auth:
 - Gemini via Vertex AI + ADC (GCP billing / credits on capy-dogfood)
@@ -17,7 +17,7 @@ from firebase_admin import initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
-from graph import run_interpret
+from agent.graph import run_interpret
 from schemas import request_from_dict
 
 logger = logging.getLogger("capy.interpret_meal")
@@ -57,7 +57,10 @@ def interpret_meal(req: https_fn.CallableRequest) -> dict:
             "interpret_meal",
             input_value=utterance,
         ) as root:
-            response = run_interpret(parsed.model_dump(mode="json"))
+            response = run_interpret(
+                parsed.model_dump(mode="json"),
+                uid=req.auth.uid,
+            )
             # Strip free-floating macro fields from candidates; keep provisionalPer100g for web.
             for candidate in response.get("candidates") or []:
                 if not isinstance(candidate, dict):

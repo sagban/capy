@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 
-from graph import run_interpret
-from messaging import GRACEFUL_FAILURE, sanitize_assistant_message
+from agent.harness.catalog import get_food
+from agent.harness.food_search import search_foods
+from agent.graph import run_interpret
+from agent.harness.messaging import GRACEFUL_FAILURE, sanitize_assistant_message
 from schemas import request_from_dict
-from tools import clear_miss_cache, run_tool
 
 
 def _base_payload(**overrides):
@@ -45,9 +46,8 @@ def test_mock_agent_enabled():
 
 
 def test_greeting_is_not_log_meal():
-    from harness.mock_turn import push_mock_turns
+    from agent.harness.mock_turn import push_mock_turns
 
-    clear_miss_cache()
     push_mock_turns([{"kind": "text", "text": "Hello! How can I help you?"}])
     out = run_interpret(_base_payload(utterance="Hey"))
     assert out["intent"] == "unknown"
@@ -57,9 +57,8 @@ def test_greeting_is_not_log_meal():
 
 
 def test_search_food_rice_ranks_staple():
-    clear_miss_cache()
     req = request_from_dict(_base_payload())
-    result = run_tool("search_food", req, query="rice", limit=8)
+    result = search_foods(req, "rice", limit=8)
     assert result["cache"] == "hit"
     names = [r["displayName"].lower() for r in result["results"]]
     assert names
@@ -69,16 +68,14 @@ def test_search_food_rice_ranks_staple():
 
 
 def test_search_hi_does_not_match_chicken():
-    clear_miss_cache()
     req = request_from_dict(_base_payload())
-    result = run_tool("search_food", req, query="hi", limit=8)
+    result = search_foods(req, "hi", limit=8)
     assert result["results"] == [] or result["cache"] == "miss"
 
 
 def test_search_food_seed_hit():
-    clear_miss_cache()
     req = request_from_dict(_base_payload())
-    result = run_tool("search_food", req, query="paneer")
+    result = search_foods(req, "paneer")
     assert result["cache"] in {"hit", "usda"}
     assert any(r["foodId"] == "seed_paneer" for r in result["results"])
 
@@ -97,18 +94,17 @@ def test_fail_closed_message_has_no_stack():
     assert "firebase" not in GRACEFUL_FAILURE.lower()
 
 
-def test_scale_portion_tool():
-    clear_miss_cache()
+def test_scale_portion_from_catalog():
     req = request_from_dict(_base_payload())
-    search = run_tool("search_food", req, query="rice", limit=1)
-    fid = search["results"][0]["foodId"]
-    scaled = run_tool("scale_portion", req, foodId=fid, grams=200)
-    assert "scaled" in scaled
-    assert scaled["scaled"]["calories"] > 0
+    search = search_foods(req, "rice", limit=1)
+    food = get_food(search["results"][0]["foodId"])
+    assert food is not None
+    calories = round(food.per100g.calories * 2.0, 2)
+    assert calories > 0
 
 
 def test_chat_text_is_not_a_tool_outcome():
-    from harness.mock_turn import push_mock_turns
+    from agent.harness.mock_turn import push_mock_turns
 
     push_mock_turns([{"kind": "text", "text": "Nothing logged yet."}])
     out = run_interpret(_base_payload(utterance="what did I have"))

@@ -6,7 +6,6 @@ enum ContextBuilder {
         utterance: String,
         dayKey: String,
         timezone: String = TimeZone.current.identifier,
-        action: ClientActionDTO? = nil,
         modelContext: ModelContext
     ) -> InterpretMealRequestDTO {
         let prefs = (try? modelContext.fetch(FetchDescriptor<UserPreference>())) ?? []
@@ -75,6 +74,7 @@ enum ContextBuilder {
             ConversationTurnDTO(role: $0.role.rawValue, text: $0.text)
         }
         let conversation = ConversationContextDTO(
+            threadId: ConversationMemoryStore.threadId,
             summary: thread.summary,
             recentTurns: recent,
             workingMemory: ConversationMemoryStore.workingMemory(from: thread)
@@ -96,7 +96,6 @@ enum ContextBuilder {
 
         return InterpretMealRequestDTO(
             utterance: utterance,
-            action: action,
             timezone: timezone,
             dayKey: dayKey,
             preferenceContext: preferenceContext,

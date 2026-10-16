@@ -2,7 +2,7 @@
 
 from schemas import HouseholdMeasure
 
-from harness.portions import SWIFT_PARITY_GRAMS, resolve_portion
+from agent.harness.portions import SWIFT_PARITY_GRAMS, resolve_portion, suggestion_portion
 
 
 def test_unit_factors_match_units_swift():
@@ -48,3 +48,38 @@ def test_real_measures_become_chips_when_amount_missing():
     assert decision.grams is None
     assert decision.chips == measures
     assert decision.free_text is False
+
+
+def test_stated_egg_count_does_not_use_a_tablespoon():
+    measures = [HouseholdMeasure(id="serving", label="3 Tbsp", grams=47)]
+    decision = resolve_portion(2, "whole eggs", measures)
+    assert decision.grams is None
+    assert decision.chips == []
+    assert decision.free_text is True
+
+
+def test_suggestion_caps_oil_at_two_tablespoons():
+    tbsp = HouseholdMeasure(id="tbsp", label="1 tablespoon", grams=13.5)
+    grams, label, condiment = suggestion_portion(
+        200,
+        kcal_per_100g=884,
+        family="oil",
+        measures=[tbsp],
+        portion_label="200 ml (200 g)",
+    )
+    assert condiment is True
+    assert grams == 27.0
+    assert "2 Tbsp" in (label or "")
+
+
+def test_suggestion_keeps_a_normal_egg_serving():
+    grams, label, condiment = suggestion_portion(
+        100,
+        kcal_per_100g=155,
+        family="egg",
+        measures=[HouseholdMeasure(id="m0", label="1 large", grams=50)],
+        portion_label="2 large (100 g)",
+    )
+    assert condiment is False
+    assert grams == 100
+    assert label == "2 large (100 g)"

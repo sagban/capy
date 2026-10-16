@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from harness.checks import density_ok
-from harness.portions import resolve_portion
+from agent.harness.checks import density_ok
+from agent.harness.portions import resolve_portion
 from schemas import (
     ClarifyOption,
     CommittedFood,
@@ -308,6 +308,35 @@ def resolve_one(
         manual_log=True,
         free_text=True,
     )
+
+
+def pick_for_suggestion(result: ItemResult) -> Optional[ResolvedItem]:
+    """Suggestions are not HITL — take the top candidate instead of pausing."""
+    if result.item is not None:
+        return result.item
+    committed = result.committed
+    if committed is None:
+        for option in result.options:
+            if not option.foodId or option.per100g is None:
+                continue
+            committed = CommittedFood(
+                foodId=option.foodId,
+                displayName=option.label,
+                per100g=option.per100g,
+                source=canonical_source(option.source),
+                family=option.family or "",
+                citationUrl=option.citationUrl,
+                measures=list(option.measures or []),
+            )
+            break
+    if committed is None:
+        return None
+    if result.status == "clarify_portion":
+        for option in result.options:
+            if option.grams:
+                return _resolved_from_committed(committed, float(option.grams), option.label)
+    applied = _apply_portion(result.draft, committed)
+    return applied.item
 
 
 def resolve_many(

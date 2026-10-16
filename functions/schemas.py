@@ -25,17 +25,6 @@ class PendingActionType(str, Enum):
     confirm_correction = "confirm_correction"
 
 
-class ClientActionType(str, Enum):
-    pick_candidate = "pick_candidate"
-    pick_portion = "pick_portion"
-    pick_option = "pick_option"
-
-
-class ClientAction(BaseModel):
-    type: ClientActionType
-    id: str
-
-
 class MacroTotals(BaseModel):
     calories: float
     proteinG: float
@@ -109,7 +98,7 @@ class ItemDraft(BaseModel):
     brandOrVenue: Optional[str] = None
     quantity: Optional[float] = None
     unit: Optional[str] = None
-    aliases: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list, description="Other names to search.")
 
 
 class ResolvedItem(BaseModel):
@@ -238,6 +227,7 @@ class WorkingMemory(BaseModel):
 
 
 class ConversationContext(BaseModel):
+    threadId: str = "default"
     summary: str = ""
     recentTurns: list[ConversationTurn] = Field(default_factory=list)
     workingMemory: Optional[WorkingMemory] = None
@@ -264,7 +254,6 @@ class MemorySnapshot(BaseModel):
 
 class InterpretMealRequest(BaseModel):
     utterance: str = ""
-    action: Optional[ClientAction] = None
     timezone: str = "UTC"
     dayKey: str
     preferenceContext: PreferenceContext = Field(default_factory=PreferenceContext)

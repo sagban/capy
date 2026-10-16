@@ -38,10 +38,12 @@ _NOISE = (
     "imitation",
 )
 
+_FUNCTIONS_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SEED_CANDIDATES = [
-    Path(__file__).resolve().parent / "seed" / "SeedFoods.json",
-    Path(__file__).resolve().parent.parent / "capy" / "Resources" / "SeedFoods.json",
-    Path(__file__).resolve().parent.parent / "docs" / "seed" / "SeedFoods.draft.json",
+    _FUNCTIONS_ROOT / "seed" / "SeedFoods.json",
+    _REPO_ROOT / "capy" / "Resources" / "SeedFoods.json",
+    _REPO_ROOT / "docs" / "seed" / "SeedFoods.draft.json",
 ]
 
 

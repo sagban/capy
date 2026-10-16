@@ -21,7 +21,7 @@ def clear_overrides() -> None:
 
 
 def _default_search(req: InterpretMealRequest) -> Callable[[str], dict[str, Any]]:
-    from food_search import search_foods
+    from agent.harness.food_search import search_foods
 
     def search(query: str) -> dict[str, Any]:
         return search_foods(req, query)
@@ -30,7 +30,7 @@ def _default_search(req: InterpretMealRequest) -> Callable[[str], dict[str, Any]
 
 
 def _default_fetch(food_id: str) -> list[Any]:
-    from usda import fetch_fdc_measures
+    from agent.harness.usda import fetch_fdc_measures
 
     return fetch_fdc_measures(food_id)
 
@@ -38,7 +38,7 @@ def _default_fetch(food_id: str) -> list[Any]:
 def _default_web(query: str) -> Optional[dict[str, Any]]:
     if os.environ.get("CAPY_MOCK_AGENT") == "1" and "web" not in _overrides:
         return None
-    from harness.web_nutrition import lookup_web_nutrition
+    from agent.harness.web_nutrition import lookup_web_nutrition
 
     return lookup_web_nutrition(query)
 

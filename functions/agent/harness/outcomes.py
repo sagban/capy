@@ -24,16 +24,13 @@ def _check_pending(response: InterpretMealResponse) -> None:
         raise OutcomeError(f"pending {pending.type.value} is not a blocking outcome")
     payload = pending.payload
     if pending.type == PendingActionType.clarify_food:
-        count = len(payload.clarifyOptions)
-        if count >= 2:
+        if payload.reason or payload.manualLog:
             return
-        if count == 0 and payload.reason and payload.manualLog:
-            return
-        raise OutcomeError("clarify_food needs 2-3 chips or a not-found reason")
+        raise OutcomeError("clarify_food needs a reason")
     if pending.type == PendingActionType.clarify_portion:
-        if payload.clarifyOptions or payload.freeTextGrams:
+        if payload.reason or payload.freeTextGrams:
             return
-        raise OutcomeError("clarify_portion needs chips or a grams field")
+        raise OutcomeError("clarify_portion needs a reason or grams field")
     if pending.type == PendingActionType.confirm_log:
         if not payload.resolvedItems:
             raise OutcomeError("confirm_log needs items")

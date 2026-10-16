@@ -1,4 +1,4 @@
-"""Scripted model turns for offline tests. Replaces model_turn and phrase only."""
+"""Scripted model turns for offline tests."""
 
 from __future__ import annotations
 

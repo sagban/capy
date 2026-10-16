@@ -82,6 +82,17 @@ final class ConversationMemoryTests: XCTestCase {
         XCTAssertTrue(LongTermMemoryStore.allNotes(in: context).isEmpty)
     }
 
+    func testMemoryNotesDoNotWriteDietPrefs() throws {
+        let context = ModelContext(container)
+        LongTermMemoryStore.apply(
+            proposals: [MemoryProposalDTO(action: .add, text: "I am vegetarian")],
+            in: context
+        )
+        let prefs = (try? context.fetch(FetchDescriptor<UserPreference>())) ?? []
+        XCTAssertTrue(prefs.isEmpty)
+        XCTAssertEqual(LongTermMemoryStore.allNotes(in: context).first?.text, "I am vegetarian")
+    }
+
     func testContextBuilderPacksLayers() throws {
         let context = ModelContext(container)
         context.insert(UserPreference(kind: .diet, value: "vegetarian"))
@@ -98,6 +109,7 @@ final class ConversationMemoryTests: XCTestCase {
         XCTAssertEqual(request.diaryContext.remainingSource, "clientComputed")
         XCTAssertEqual(request.longTermMemory.first?.text, "Trains Tuesdays")
         XCTAssertEqual(request.conversation.recentTurns.count, 1)
+        XCTAssertEqual(request.conversation.threadId, "default")
         XCTAssertNotNil(request.memorySnapshot)
     }
 }

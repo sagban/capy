@@ -18,7 +18,6 @@ struct CapyTabView: View {
     @State private var pendingCorrectionOp: String?
     @State private var isSending = false
     @State private var lastUtterance = ""
-    @State private var lastAction: ClientActionDTO?
     @State private var speech = SpeechInputController()
     @FocusState private var talkFocused: Bool
     @State private var showMemory = false
@@ -242,46 +241,12 @@ struct CapyTabView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.capy.accent)
                 }
-                if !message.suggestions.isEmpty {
-                    suggestionCards(message.suggestions)
-                }
                 if message.manualLog {
                     Button("Manual Log") { showManualLog = true }
                         .font(.subheadline.weight(.semibold))
                 }
             }
             if message.role != .user { Spacer(minLength: 48) }
-        }
-    }
-
-    private func suggestionCards(_ options: [SuggestionOptionDTO]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(options, id: \.id) { option in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(option.title)
-                        .font(.subheadline.weight(.semibold))
-                    let foods = option.items.map(\.displayName).filter { !$0.isEmpty }
-                    if !foods.isEmpty {
-                        Text(foods.joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundStyle(Color.capy.textSecondary)
-                    }
-                    if let totals = option.totals {
-                        let mark = option.fit == "over" ? "over the meal budget" : "fits"
-                        Text("\(Int(totals.calories.rounded())) cal · \(Int(totals.proteinG.rounded())) g protein · \(mark)")
-                            .font(.caption)
-                            .foregroundStyle(Color.capy.textSecondary)
-                    }
-                    Button("Log this") {
-                        send(action: ClientActionDTO(type: "pick_option", id: option.id), echo: option.title)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.capy.accent)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.capy.surfaceElevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
         }
     }
 
@@ -402,35 +367,23 @@ struct CapyTabView: View {
         ConversationMemoryStore.appendTurn(role: .user, text: text, in: modelContext)
         draft = ""
         lastUtterance = text
-        lastAction = nil
         isSending = true
-        Task { await interpret(utterance: text, action: nil) }
-    }
-
-    private func send(action: ClientActionDTO, echo: String) {
-        guard !isSending else { return }
-        messages.append(ChatBubble(role: .user, text: echo))
-        ConversationMemoryStore.appendTurn(role: .user, text: echo, in: modelContext)
-        lastUtterance = ""
-        lastAction = action
-        isSending = true
-        Task { await interpret(utterance: "", action: action) }
+        Task { await interpret(utterance: text) }
     }
 
     private func retryLast() {
         guard !isSending else { return }
         isSending = true
         messages.removeAll { $0.role == .error }
-        Task { await interpret(utterance: lastUtterance, action: lastAction) }
+        Task { await interpret(utterance: lastUtterance) }
     }
 
     @MainActor
-    private func interpret(utterance: String, action: ClientActionDTO?) async {
+    private func interpret(utterance: String) async {
         defer { isSending = false }
         let request = ContextBuilder.buildInterpretRequest(
             utterance: utterance,
             dayKey: todayKey,
-            action: action,
             modelContext: modelContext
         )
         do {
@@ -443,15 +396,15 @@ struct CapyTabView: View {
                 LongTermMemoryStore.apply(proposals: proposals, in: modelContext)
             }
             let reply = response.assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-            let suggestions = response.suggestionOptions ?? []
             let manual = response.pendingAction?.payload.manualLog == true
-            let showed = !reply.isEmpty || !suggestions.isEmpty || manual || response.pendingAction != nil
-            if !reply.isEmpty || !suggestions.isEmpty || manual {
+            let noted = !(response.memoryProposals ?? []).isEmpty
+            let suggested = !(response.suggestionOptions ?? []).isEmpty
+            let showed = !reply.isEmpty || manual || response.pendingAction != nil || noted || suggested
+            if !reply.isEmpty || manual {
                 messages.append(
                     ChatBubble(
                         role: .capy,
                         text: reply,
-                        suggestions: suggestions,
                         manualLog: manual
                     )
                 )
@@ -632,13 +585,21 @@ struct CapyTabView: View {
             target: target,
             eaten: eaten + added
         )
-        let names = items.map(\.name).joined(separator: " and ")
+        let names = items.map { readableFoodName($0.name) }
+        let listed: String
+        if names.count <= 1 {
+            listed = names.first ?? "that"
+        } else if names.count == 2 {
+            listed = "\(names[0]) and \(names[1])"
+        } else {
+            listed = names.dropLast().joined(separator: ", ") + ", and " + (names.last ?? "")
+        }
         let level = settings.first?.assistanceLevel ?? .fullAssist
         let reply: String
         if level == .quiet {
-            reply = "logged \(names). \(Int(left.calories)) left."
+            reply = "logged \(listed). \(Int(left.calories)) left."
         } else {
-            reply = "logged \(names). \(Int(added.calories)) cal. \(Int(left.calories)) cal left."
+            reply = "logged \(listed). \(Int(added.calories)) cal. \(Int(left.calories)) cal left."
         }
         finishConfirm(reply: reply)
     }
@@ -653,40 +614,40 @@ struct CapyTabView: View {
     }
 }
 
+func readableFoodName(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    let head: String
+    if let range = trimmed.range(of: " — ") {
+        head = String(trimmed[..<range.lowerBound])
+    } else if let range = trimmed.range(of: " - ") {
+        head = String(trimmed[..<range.lowerBound])
+    } else {
+        head = trimmed
+    }
+    let letters = head.filter(\.isLetter)
+    guard !letters.isEmpty, letters.allSatisfy(\.isUppercase) else { return head }
+    return head.localizedLowercase.localizedCapitalized
+}
+
 struct ChatBubble: Identifiable {
     enum Role { case capy, user, error }
     let id: UUID
     let role: Role
     let text: String
-    var chips: [ClarifyOptionDTO] = []
-    var suggestions: [SuggestionOptionDTO] = []
-    var resolvedNames: [String] = []
-    var waitingNames: [String] = []
     var manualLog: Bool = false
     var freeTextGrams: Bool = false
-    var chipAction: String = "pick_candidate"
 
     init(
         id: UUID = UUID(),
         role: Role,
         text: String,
-        chips: [ClarifyOptionDTO] = [],
-        suggestions: [SuggestionOptionDTO] = [],
-        resolvedNames: [String] = [],
-        waitingNames: [String] = [],
         manualLog: Bool = false,
-        freeTextGrams: Bool = false,
-        chipAction: String = "pick_candidate"
+        freeTextGrams: Bool = false
     ) {
         self.id = id
         self.role = role
         self.text = text
-        self.chips = chips
-        self.suggestions = suggestions
-        self.resolvedNames = resolvedNames
-        self.waitingNames = waitingNames
         self.manualLog = manualLog
         self.freeTextGrams = freeTextGrams
-        self.chipAction = chipAction
     }
 }

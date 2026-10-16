@@ -41,13 +41,6 @@ final class AgentContractTests: XCTestCase {
         XCTAssertNil(SourceBadge.title(for: "catalog"))
     }
 
-    func testActionRoundTrip() throws {
-        let action = ClientActionDTO(type: "pick_option", id: "opt1")
-        let data = try JSONEncoder().encode(action)
-        let decoded = try JSONDecoder().decode(ClientActionDTO.self, from: data)
-        XCTAssertEqual(decoded, action)
-    }
-
     func testDiaryItemsCarryEntryIdAndIndex() throws {
         let container = try ModelContainer(
             for: Schema([MealEntry.self, MealEntryItem.self]),

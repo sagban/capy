@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from food_search import rank_candidates, search_foods
+from agent.harness.food_search import rank_candidates, search_foods
 from schemas import FoodHit, MacroTotals, request_from_dict
-from tools import clear_miss_cache, run_tool
 
 
 def _req(**kwargs):
@@ -89,8 +88,7 @@ def test_personalization_boosts_today_log():
 
 
 def test_search_food_rice_still_seed_staple():
-    clear_miss_cache()
-    result = run_tool("search_food", _req(), query="rice", limit=8)
+    result = search_foods(_req(), "rice", limit=8)
     assert result["results"]
     assert result["results"][0]["displayName"].lower().startswith("rice")
     assert result.get("suggestWebSearch") is False or result.get("confidence") in {

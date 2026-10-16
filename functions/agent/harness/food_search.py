@@ -12,9 +12,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from catalog import search_seed
+from agent.harness.catalog import search_seed
 from schemas import FoodHit, InterpretMealRequest
-from usda import search_usda_pool
+from agent.harness.usda import search_usda_pool
 
 QueryBreadth = Literal["broad", "narrow"]
 

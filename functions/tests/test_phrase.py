@@ -1,44 +1,24 @@
-"""Phrase validator drops ungrounded numbers and food names."""
-
-from harness.phrase import validate_message
+from agent.harness.format import clarify_question, format_message
 
 
-def test_ungrounded_number_stripped():
-    text = validate_message(
-        "Egg is 50 g. That is about 900 cal.",
-        {"items": [{"displayName": "Egg", "grams": 50}]},
+def test_memory_note_without_model_text():
+    text = format_message(
+        draft="",
+        outcome={"memory": [{"action": "add", "text": "vegetarian"}]},
     )
-    assert "50" in text
-    assert "900" not in text
+    assert "vegetarian" in text.lower()
 
 
-def test_unknown_food_name_stripped():
-    text = validate_message(
-        "Egg is logged. Also have pizza.",
-        {"items": [{"displayName": "Egg"}]},
+def test_no_surviving_suggestion_still_has_a_sentence():
+    text = format_message(
+        draft="",
+        outcome={"reason": "no suggestion survived", "dropped": ["opt: unresolved"]},
     )
-    assert "egg" in text.lower()
-    assert "pizza" not in text.lower()
-
-
-def test_suggestion_reply_keeps_normal_words():
-    text = validate_message(
-        "Lentil soup is a light dinner at 305 cal, within the 825 cal you have left.",
-        {
-            "budget": {"calories": 825, "proteinG": 78},
-            "options": [
-                {"title": "Lentil soup", "fit": "within", "totals": {"calories": 305, "proteinG": 18}}
-            ],
-        },
-    )
-    assert "light" in text
-    assert "305" in text
+    assert "couldn't source" in text.lower()
 
 
 def test_empty_suggestion_draft_still_explains_the_options():
-    from harness.phrase import phrase_message
-
-    text = phrase_message(
+    text = format_message(
         draft="",
         outcome={
             "budget": {"calories": 825, "proteinG": 78},
@@ -51,23 +31,25 @@ def test_empty_suggestion_draft_still_explains_the_options():
                 }
             ],
         },
-        context_pack="",
-        user_text="What should I eat for dinner.",
-        generate=None,
     )
     assert "Tofu salad" in text
     assert "297" in text
     assert "825" in text
+    assert "200 g tofu" not in text
 
 
-def test_log_status_with_no_food_is_dropped():
-    text = validate_message(
-        "Nothing was logged.",
-        {"today": [{"name": "Egg"}]},
+def test_portion_question_does_not_call_a_tablespoon_the_food():
+    text = clarify_question(
+        {
+            "kind": "clarify_portion",
+            "reason": "need_amount",
+            "food": "whole eggs",
+            "quantity": 2,
+            "unit": "whole eggs",
+            "options": ["3 Tbsp (47 g)"],
+        }
     )
-    assert text == ""
-
-
-def test_empty_when_nothing_survives():
-    text = validate_message("Have some pizza.", {"items": [{"displayName": "Egg"}]})
-    assert text == ""
+    assert "Which one" not in text
+    assert "3 Tbsp" not in text
+    assert "2 whole eggs" in text
+    assert "grams" in text

@@ -74,7 +74,7 @@ struct MealConfirmationSheet: View {
                         }
                         ForEach($lines) { $line in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(line.name)
+                                Text(readableFoodName(line.name))
                                 if let portion = line.portionLabel, !portion.isEmpty {
                                     Text(portion)
                                         .font(.caption)

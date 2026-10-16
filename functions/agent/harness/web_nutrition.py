@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
-from harness.checks import density_ok
+from agent.harness.checks import density_ok
 from schemas import MacroTotals
 
 logger = logging.getLogger("capy.web_nutrition")
@@ -37,17 +37,13 @@ def _grounded_generate(query: str) -> Optional[dict[str, Any]]:
     try:
         from google.genai import types
 
-        from vertex_gemini import _model, get_vertex_client
+        from agent.llm.vertex import _model, get_vertex_client
     except Exception as exc:  # noqa: BLE001
         logger.warning("web_nutrition_import_failed: %s", exc)
         return None
-    prompt = (
-        "Look up nutrition for this food. Reply with JSON only: "
-        '{"calories": number, "proteinG": number, "carbsG": number, "fatG": number, '
-        '"citationUrl": "https://..."}. Numbers are per 100 grams. '
-        "citationUrl must be a page that states those numbers. "
-        f"Food: {query}"
-    )
+    from agent.llm.prompt import web_nutrition_prompt
+
+    prompt = web_nutrition_prompt(query)
     try:
         client = get_vertex_client()
         result = client.models.generate_content(

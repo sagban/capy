@@ -2,9 +2,9 @@
 
 from schemas import ItemDraft, MacroTotals
 
-from harness.checks import density_ok
-from harness.deps import set_overrides
-from harness.resolve import query_list, resolve_many
+from agent.harness.checks import density_ok
+from agent.harness.deps import set_overrides
+from agent.harness.resolve import query_list, resolve_many
 
 
 def _clock_factory(values):
@@ -185,7 +185,7 @@ def test_queue_pauses_on_first_clarify_and_keeps_later_drafts():
         b = {**a, "foodId": "usda_2", "displayName": "Chicken B"}
         return {"results": [], "candidatesForClarify": [a, b], "confidence": "medium"}
 
-    from harness.resolve import queue_from_results
+    from agent.harness.resolve import queue_from_results
 
     results = resolve_many(
         [

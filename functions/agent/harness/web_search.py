@@ -17,7 +17,7 @@ def web_search(query: str, limit: int = 5) -> dict[str, Any]:
     try:
         from google.genai import types
 
-        from vertex_gemini import get_vertex_client, _model
+        from agent.llm.vertex import get_vertex_client, _model
     except Exception as exc:  # noqa: BLE001
         logger.warning("web_search_import_failed: %s", exc)
         return {"results": [], "error": "unavailable"}

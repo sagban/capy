@@ -1,6 +1,6 @@
 # System architecture overview
 
-Cappy is an iPhone calorie tracker with an agent front door. **Deterministic Swift code owns all nutrition arithmetic.** The LLM only interprets language into structured food/portion intents.
+Cappy is an iPhone calorie tracker with an agent front door. **Code owns trusted gram scaling and displayed totals.** The meal LLM interprets language into tool calls. A grounded web lookup may normalize a cited serving to per 100 g; the harness still gates that density (citation + Atwater) before commit.
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -34,7 +34,7 @@ Cappy is an iPhone calorie tracker with an agent front door. **Deterministic Swi
 
 | Layer | Allowed | Forbidden |
 |-------|---------|-----------|
-| LLM / LangGraph | Intent, food refs, grams or ambiguity, corrections, clarify questions | Stating calorie/PCF totals as fact |
+| LLM / LangGraph | Intent, food refs, grams or ambiguity, corrections, clarify questions; web path may normalize cited servings to per 100 g | Stating diary/suggestion totals as fact; inventing density without a citation |
 | Deterministic core (Swift) | Portion scaling, remaining maths, variety filter, verifier, ranking | Calling Gemini |
 | UI | Display verified numbers only | Showing model-claimed macros |
 

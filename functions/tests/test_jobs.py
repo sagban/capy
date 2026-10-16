@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from graph import reset_graph, run_interpret
-from harness.deps import set_overrides
-from harness.mock_turn import push_mock_turns
-from harness.outcomes import normalize_outcome
+from agent.graph import reset_graph, run_interpret
+from agent.harness.deps import set_overrides
+from agent.harness.mock_turn import push_mock_turns
+from agent.harness.outcomes import normalize_outcome
 from schemas import MacroTotals, request_from_dict
 
 
@@ -91,7 +91,7 @@ def test_log_multi_item_confirm():
     assert out["workingMemory"]["draftLog"]
 
 
-def test_chip_resume_and_typed_path_keep_queue():
+def test_clarify_keeps_queue_for_the_next_message():
     _install_search()
     push_mock_turns(
         [
@@ -110,18 +110,8 @@ def test_chip_resume_and_typed_path_keep_queue():
     assert first["pendingAction"]["type"] == "clarify_food"
     queue = first["workingMemory"]["resolveQueue"]
     assert queue["remaining"][0]["foodQuery"] == "egg"
-    option_id = first["pendingAction"]["payload"]["clarifyOptions"][0]["id"]
-    # Chip sends an action. No model turn.
-    resumed = run_interpret(
-        _payload(
-            "",
-            action={"type": "pick_candidate", "id": option_id},
-            conversation={"summary": "", "recentTurns": [], "workingMemory": first["workingMemory"]},
-        )
-    )
-    # Picked food has no household measure and the draft had no amount → grams field.
-    assert resumed["pendingAction"]["type"] == "clarify_portion"
-    assert resumed["pendingAction"]["payload"]["freeTextGrams"] is True
+    assert queue["clarifyOptions"]
+    assert not first["pendingAction"]["payload"].get("clarifyOptions")
 
 
 def test_edit_draft_changes_open_log():
@@ -161,7 +151,7 @@ def test_edit_draft_changes_open_log():
     assert out["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 150
 
 
-def test_suggest_then_log_by_action_and_by_text():
+def test_suggest_then_log_by_text():
     _install_search()
     push_mock_turns(
         [
@@ -187,14 +177,6 @@ def test_suggest_then_log_by_action_and_by_text():
     assert suggested["suggestionOptions"][0]["fit"] in {"within", "over"}
     assert suggested["suggestionOptions"][0]["totals"]["calories"] > 0
     option_id = suggested["suggestionOptions"][0]["id"]
-    by_action = run_interpret(
-        _payload(
-            "",
-            action={"type": "pick_option", "id": option_id},
-            conversation={"summary": "", "recentTurns": [], "workingMemory": suggested["workingMemory"]},
-        )
-    )
-    assert by_action["pendingAction"]["type"] == "confirm_log"
     push_mock_turns(
         [
             {
@@ -275,6 +257,69 @@ def test_repeat_and_correct_by_entry_id():
     assert corrected["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 80
 
 
+def test_suggest_drops_meat_when_user_said_vegetarian():
+    _install_search()
+    push_mock_turns(
+        [
+            {
+                "kind": "tool_calls",
+                "calls": [
+                    {
+                        "name": "compose_suggestions",
+                        "arguments": {
+                            "mealSlot": "lunch",
+                            "drafts": [
+                                {
+                                    "title": "Chicken",
+                                    "items": [{"foodQuery": "chicken", "quantity": 5, "unit": "oz"}],
+                                },
+                                {
+                                    "title": "Eggs",
+                                    "items": [{"foodQuery": "egg", "quantity": 2, "unit": "large"}],
+                                },
+                            ],
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    out = run_interpret(_payload("I am vegetarian, what should I eat"))
+    normalize_outcome(out)
+    assert [opt["title"] for opt in out["suggestionOptions"]] == ["Eggs"]
+    assert "Chicken" not in (out["assistantMessage"] or "")
+
+
+def test_suggest_uses_top_hit_when_search_is_ambiguous():
+    _install_search()
+    push_mock_turns(
+        [
+            {
+                "kind": "tool_calls",
+                "calls": [
+                    {
+                        "name": "compose_suggestions",
+                        "arguments": {
+                            "mealSlot": "lunch",
+                            "drafts": [
+                                {
+                                    "title": "Chicken",
+                                    "items": [{"foodQuery": "chicken", "quantity": 5, "unit": "oz"}],
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    out = run_interpret(_payload("suggest lunch"))
+    normalize_outcome(out)
+    assert out["suggestionOptions"]
+    assert "Chicken" in out["suggestionOptions"][0]["items"][0]["displayName"]
+    assert out["assistantMessage"]
+
+
 def test_dinner_tool_keeps_the_model_sentence():
     _install_search()
     push_mock_turns(
@@ -316,6 +361,7 @@ def test_memory_add_and_remove_with_chat():
     added = run_interpret(_payload("remember no cilantro"))
     assert added["memoryProposals"][0]["action"] == "add"
     assert added["memoryProposals"][0]["text"] == "no cilantro"
+    assert "cilantro" in added["assistantMessage"].lower()
     chat = run_interpret(_payload("what did I have"))
     assert chat["pendingAction"] is None
     assert chat["intent"] == "unknown"
@@ -349,6 +395,103 @@ def test_combined_log_and_suggest():
     normalize_outcome(out)
     assert out["pendingAction"]["type"] == "confirm_log"
     assert out["suggestionOptions"]
+
+
+def test_oil_shot_is_not_a_suggested_meal():
+    def search(query):
+        if "oil" in query.lower():
+            return {
+                "results": [
+                    {
+                        "foodId": "oil_1",
+                        "displayName": "Olive oil",
+                        "source": "usda",
+                        "per100g": {"calories": 884, "proteinG": 0, "carbsG": 0, "fatG": 100},
+                        "family": "oil",
+                        "measures": [{"id": "tbsp", "label": "1 tablespoon", "grams": 13.5}],
+                    }
+                ],
+                "candidatesForClarify": [],
+                "confidence": "high",
+            }
+        return _egg_search(query)
+
+    set_overrides(search=search, web=lambda _q: None, fetch_measures=lambda _fid: [])
+    push_mock_turns(
+        [
+            {
+                "kind": "tool_calls",
+                "calls": [
+                    {
+                        "name": "compose_suggestions",
+                        "arguments": {
+                            "mealSlot": "dinner",
+                            "drafts": [
+                                {
+                                    "title": "Olive oil",
+                                    "items": [{"foodQuery": "olive oil", "quantity": 200, "unit": "ml"}],
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    out = run_interpret(_payload("what should I eat"))
+    normalize_outcome(out)
+    assert out["suggestionOptions"] == []
+
+
+def test_oil_on_eggs_is_clamped_to_two_tablespoons():
+    def search(query):
+        if "oil" in query.lower():
+            return {
+                "results": [
+                    {
+                        "foodId": "oil_1",
+                        "displayName": "Olive oil",
+                        "source": "usda",
+                        "per100g": {"calories": 884, "proteinG": 0, "carbsG": 0, "fatG": 100},
+                        "family": "oil",
+                        "measures": [{"id": "tbsp", "label": "1 tablespoon", "grams": 13.5}],
+                    }
+                ],
+                "candidatesForClarify": [],
+                "confidence": "high",
+            }
+        return _egg_search(query)
+
+    set_overrides(search=search, web=lambda _q: None, fetch_measures=lambda _fid: [])
+    push_mock_turns(
+        [
+            {
+                "kind": "tool_calls",
+                "calls": [
+                    {
+                        "name": "compose_suggestions",
+                        "arguments": {
+                            "mealSlot": "lunch",
+                            "drafts": [
+                                {
+                                    "title": "Eggs",
+                                    "items": [
+                                        {"foodQuery": "egg", "quantity": 2, "unit": "large"},
+                                        {"foodQuery": "olive oil", "quantity": 200, "unit": "ml"},
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    out = run_interpret(_payload("suggest lunch"))
+    normalize_outcome(out)
+    oil = next(item for item in out["suggestionOptions"][0]["items"] if "oil" in item["displayName"].lower())
+    assert oil["grams"] == 27
+    assert "Tbsp" in (oil.get("portionLabel") or "")
 
 
 def test_infra_failure_is_agent_unavailable():
@@ -388,7 +531,7 @@ def test_repeat_miss_is_chat():
 
 def test_executor_outputs_normalize():
     _install_search()
-    from harness.execute import run_calls
+    from agent.harness.tools.jobs import run_calls
 
     req = request_from_dict(_payload("egg"))
     out = run_calls(

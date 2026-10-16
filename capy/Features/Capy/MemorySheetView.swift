@@ -59,6 +59,7 @@ struct MemorySheetView: View {
                     guard !text.isEmpty else { return }
                     LongTermMemoryStore.add(text: text, source: .user, in: modelContext)
                     draft = ""
+                    UserSyncService.shared.scheduleProfileSync(in: modelContext)
                 }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .foregroundStyle(Color.capy.accent)
@@ -94,6 +95,7 @@ struct MemorySheetView: View {
                         Button("Save") {
                             if let id = editingId {
                                 LongTermMemoryStore.update(id: id, text: editText, in: modelContext)
+                                UserSyncService.shared.scheduleProfileSync(in: modelContext)
                             }
                             editingId = nil
                         }
@@ -109,5 +111,6 @@ struct MemorySheetView: View {
         for index in offsets {
             modelContext.delete(notes[index])
         }
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 }

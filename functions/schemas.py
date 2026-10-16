@@ -23,6 +23,7 @@ class PendingActionType(str, Enum):
     clarify_food = "clarify_food"
     confirm_log = "confirm_log"
     confirm_correction = "confirm_correction"
+    confirm_delete = "confirm_delete"
 
 
 class MacroTotals(BaseModel):
@@ -187,6 +188,7 @@ class PendingActionPayload(BaseModel):
     resolvedItems: list[ResolvedItem] = Field(default_factory=list)
     clarifyOptions: list[ClarifyOption] = Field(default_factory=list)
     entryId: Optional[str] = None
+    dayKey: Optional[str] = None
     itemIndex: Optional[int] = None
     correctionOp: Optional[str] = None
     freeTextGrams: bool = False
@@ -244,6 +246,10 @@ class ConversationContext(BaseModel):
 
 class InterpretContext(BaseModel):
     assistanceLevel: str = "fullAssist"
+    responseStyle: str = Field(
+        default="balanced",
+        description="User dial: precise | balanced | creative (maps to LLM sampling).",
+    )
     lastIntent: Optional[str] = None
 
 
@@ -303,6 +309,7 @@ class InterpretMealResponse(BaseModel):
     suggestionBudget: Optional[dict[str, float]] = None
     suggestionOptions: list[SuggestionOption] = Field(default_factory=list)
     workingMemory: Optional[WorkingMemory] = None
+    conversation: Optional[ConversationContext] = None
 
 
 class FoodHit(BaseModel):

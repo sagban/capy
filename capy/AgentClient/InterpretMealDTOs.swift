@@ -17,6 +17,7 @@ enum PendingActionType: String, Codable, Equatable, Sendable {
     case clarifyFood = "clarify_food"
     case confirmLog = "confirm_log"
     case confirmCorrection = "confirm_correction"
+    case confirmDelete = "confirm_delete"
 }
 
 enum MemoryProposalAction: String, Codable, Equatable, Sendable {
@@ -31,13 +32,94 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
     var utterance: String
     var timezone: String
     var dayKey: String
-    var preferenceContext: PreferenceContextDTO
-    var diaryContext: DiaryContextDTO
-    var longTermMemory: [LongTermMemoryNoteDTO]
-    var conversation: ConversationContextDTO
-    var context: InterpretContextDTO
+    var preferenceContext: PreferenceContextDTO = .empty
+    var diaryContext: DiaryContextDTO = .empty
+    var longTermMemory: [LongTermMemoryNoteDTO] = []
+    var conversation: ConversationContextDTO = ConversationContextDTO(summary: "", recentTurns: [])
+    var context: InterpretContextDTO = InterpretContextDTO(
+        assistanceLevel: "fullAssist",
+        responseStyle: "balanced",
+        lastIntent: nil
+    )
     /// Legacy alias for #37 memory snapshot contract coverage.
     var memorySnapshot: MemorySnapshotDTO?
+    /// Optional Capy thread id (`users/{uid}/threads/{threadId}`).
+    var threadId: String = CapyThreadService.defaultThreadId
+    /// When true, the server loads diary/profile/thread from Firestore (`context_loader`).
+    var useServerContext: Bool = true
+
+    enum CodingKeys: String, CodingKey {
+        case utterance, timezone, dayKey, threadId, preferenceContext, diaryContext, longTermMemory
+        case conversation, context, memorySnapshot, useServerContext
+    }
+
+    init(
+        utterance: String,
+        timezone: String,
+        dayKey: String,
+        preferenceContext: PreferenceContextDTO = .empty,
+        diaryContext: DiaryContextDTO = .empty,
+        longTermMemory: [LongTermMemoryNoteDTO] = [],
+        conversation: ConversationContextDTO = ConversationContextDTO(summary: "", recentTurns: []),
+        context: InterpretContextDTO = InterpretContextDTO(
+            assistanceLevel: "fullAssist",
+            responseStyle: "balanced",
+            lastIntent: nil
+        ),
+        memorySnapshot: MemorySnapshotDTO? = nil,
+        threadId: String = CapyThreadService.defaultThreadId,
+        useServerContext: Bool = true
+    ) {
+        self.utterance = utterance
+        self.timezone = timezone
+        self.dayKey = dayKey
+        self.preferenceContext = preferenceContext
+        self.diaryContext = diaryContext
+        self.longTermMemory = longTermMemory
+        self.conversation = conversation
+        self.context = context
+        self.memorySnapshot = memorySnapshot
+        self.threadId = threadId
+        self.useServerContext = useServerContext
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(utterance, forKey: .utterance)
+        try container.encode(timezone, forKey: .timezone)
+        try container.encode(dayKey, forKey: .dayKey)
+        if useServerContext {
+            try container.encode(true, forKey: .useServerContext)
+            if threadId != CapyThreadService.defaultThreadId {
+                try container.encode(threadId, forKey: .threadId)
+            }
+            return
+        }
+        try container.encode(preferenceContext, forKey: .preferenceContext)
+        try container.encode(diaryContext, forKey: .diaryContext)
+        try container.encode(longTermMemory, forKey: .longTermMemory)
+        try container.encode(conversation, forKey: .conversation)
+        try container.encode(context, forKey: .context)
+        try container.encodeIfPresent(memorySnapshot, forKey: .memorySnapshot)
+        try container.encode(useServerContext, forKey: .useServerContext)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        utterance = try container.decode(String.self, forKey: .utterance)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone) ?? "UTC"
+        dayKey = try container.decode(String.self, forKey: .dayKey)
+        preferenceContext = try container.decodeIfPresent(PreferenceContextDTO.self, forKey: .preferenceContext) ?? .empty
+        diaryContext = try container.decodeIfPresent(DiaryContextDTO.self, forKey: .diaryContext) ?? .empty
+        longTermMemory = try container.decodeIfPresent([LongTermMemoryNoteDTO].self, forKey: .longTermMemory) ?? []
+        conversation = try container.decodeIfPresent(ConversationContextDTO.self, forKey: .conversation)
+            ?? ConversationContextDTO(summary: "", recentTurns: [])
+        context = try container.decodeIfPresent(InterpretContextDTO.self, forKey: .context)
+            ?? InterpretContextDTO(assistanceLevel: "fullAssist", responseStyle: "balanced", lastIntent: nil)
+        memorySnapshot = try container.decodeIfPresent(MemorySnapshotDTO.self, forKey: .memorySnapshot)
+        threadId = try container.decodeIfPresent(String.self, forKey: .threadId) ?? CapyThreadService.defaultThreadId
+        useServerContext = try container.decodeIfPresent(Bool.self, forKey: .useServerContext) ?? false
+    }
 }
 
 struct PreferenceContextDTO: Codable, Equatable, Sendable {
@@ -45,6 +127,8 @@ struct PreferenceContextDTO: Codable, Equatable, Sendable {
     var dislikes: [String]
     var allergies: [String]
     var diets: [String]
+
+    static let empty = PreferenceContextDTO(likes: [], dislikes: [], allergies: [], diets: [])
 }
 
 struct DiaryDaySummaryDTO: Codable, Equatable, Sendable {
@@ -80,6 +164,14 @@ struct DiaryContextDTO: Codable, Equatable, Sendable {
     var remainingSource: String
     /// Enabled meal types in order (user plan for the day).
     var mealPlan: [MealPlanSlotDTO] = []
+
+    static let empty = DiaryContextDTO(
+        today: [],
+        previousDays: [],
+        remaining: .zero,
+        remainingSource: "serverComputed",
+        mealPlan: []
+    )
 }
 
 struct LongTermMemoryNoteDTO: Codable, Equatable, Sendable {
@@ -94,14 +186,67 @@ struct ConversationTurnDTO: Codable, Equatable, Sendable {
 
 struct ConversationContextDTO: Codable, Equatable, Sendable {
     var threadId: String = "default"
-    var summary: String
-    var recentTurns: [ConversationTurnDTO]
+    var summary: String = ""
+    var recentTurns: [ConversationTurnDTO] = []
     var workingMemory: WorkingMemoryPayload?
+
+    init(
+        threadId: String = CapyThreadService.defaultThreadId,
+        summary: String = "",
+        recentTurns: [ConversationTurnDTO] = [],
+        workingMemory: WorkingMemoryPayload? = nil
+    ) {
+        self.threadId = threadId
+        self.summary = summary
+        self.recentTurns = recentTurns
+        self.workingMemory = workingMemory
+    }
+}
+
+struct ThreadMessageDTO: Codable, Equatable, Sendable {
+    var messageId: String
+    var role: String
+    var text: String
+    var createdAt: String?
+}
+
+struct ThreadPageInfoDTO: Codable, Equatable, Sendable {
+    var hasMore: Bool
+    var nextCursor: String?
+
+    init(hasMore: Bool = false, nextCursor: String? = nil) {
+        self.hasMore = hasMore
+        self.nextCursor = nextCursor
+    }
+}
+
+struct GetThreadResponseDTO: Codable, Equatable, Sendable {
+    var conversation: ConversationContextDTO
+    var messages: [ThreadMessageDTO]
+    var pageInfo: ThreadPageInfoDTO
 }
 
 struct InterpretContextDTO: Codable, Equatable, Sendable {
     var assistanceLevel: String
+    var responseStyle: String
     var lastIntent: String?
+
+    init(assistanceLevel: String, responseStyle: String = "balanced", lastIntent: String?) {
+        self.assistanceLevel = assistanceLevel
+        self.responseStyle = responseStyle
+        self.lastIntent = lastIntent
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assistanceLevel = try container.decode(String.self, forKey: .assistanceLevel)
+        responseStyle = try container.decodeIfPresent(String.self, forKey: .responseStyle) ?? "balanced"
+        lastIntent = try container.decodeIfPresent(String.self, forKey: .lastIntent)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case assistanceLevel, responseStyle, lastIntent
+    }
 }
 
 struct MemorySnapshotDTO: Codable, Equatable, Sendable {
@@ -133,6 +278,9 @@ struct InterpretMealResponseDTO: Codable, Equatable, Sendable {
     var suggestionBudget: SuggestionBudgetDTO?
     var suggestionOptions: [SuggestionOptionDTO]?
     var workingMemory: WorkingMemoryPayload?
+    var conversation: ConversationContextDTO?
+    var messages: [ThreadMessageDTO]?
+    var pageInfo: ThreadPageInfoDTO?
 
     init(
         intent: MealIntent,
@@ -146,11 +294,17 @@ struct InterpretMealResponseDTO: Codable, Equatable, Sendable {
         pendingAction: PendingActionDTO? = nil,
         suggestionBudget: SuggestionBudgetDTO? = nil,
         suggestionOptions: [SuggestionOptionDTO]? = nil,
-        workingMemory: WorkingMemoryPayload? = nil
+        workingMemory: WorkingMemoryPayload? = nil,
+        conversation: ConversationContextDTO? = nil,
+        messages: [ThreadMessageDTO]? = nil,
+        pageInfo: ThreadPageInfoDTO? = nil
     ) {
         self.suggestionBudget = suggestionBudget
         self.suggestionOptions = suggestionOptions
         self.workingMemory = workingMemory
+        self.conversation = conversation
+        self.messages = messages
+        self.pageInfo = pageInfo
         self.intent = intent
         self.candidates = candidates
         self.clarifyingQuestion = clarifyingQuestion
@@ -176,12 +330,15 @@ struct InterpretMealResponseDTO: Codable, Equatable, Sendable {
         suggestionBudget = try c.decodeIfPresent(SuggestionBudgetDTO.self, forKey: .suggestionBudget)
         suggestionOptions = try c.decodeIfPresent([SuggestionOptionDTO].self, forKey: .suggestionOptions)
         workingMemory = try c.decodeIfPresent(WorkingMemoryPayload.self, forKey: .workingMemory)
+        conversation = try c.decodeIfPresent(ConversationContextDTO.self, forKey: .conversation)
+        messages = try c.decodeIfPresent([ThreadMessageDTO].self, forKey: .messages)
+        pageInfo = try c.decodeIfPresent(ThreadPageInfoDTO.self, forKey: .pageInfo)
     }
 
     private enum CodingKeys: String, CodingKey {
         case intent, candidates, clarifyingQuestion, correction, suggestedTemplateId
         case assistantMessage, warnings, memoryProposals, pendingAction, suggestionBudget, suggestionOptions
-        case workingMemory
+        case workingMemory, conversation, messages, pageInfo
     }
 
     func workingMemoryPayload() -> WorkingMemoryPayload? {
@@ -282,6 +439,7 @@ struct PendingActionPayloadDTO: Codable, Equatable, Sendable {
     var resolvedItems: [ResolvedItemDTO]
     var clarifyOptions: [ClarifyOptionDTO]
     var entryId: String?
+    var dayKey: String?
     var itemIndex: Int?
     var correctionOp: String?
     var freeTextGrams: Bool
@@ -295,6 +453,7 @@ struct PendingActionPayloadDTO: Codable, Equatable, Sendable {
         resolvedItems: [ResolvedItemDTO] = [],
         clarifyOptions: [ClarifyOptionDTO] = [],
         entryId: String? = nil,
+        dayKey: String? = nil,
         itemIndex: Int? = nil,
         correctionOp: String? = nil,
         freeTextGrams: Bool = false,
@@ -307,6 +466,7 @@ struct PendingActionPayloadDTO: Codable, Equatable, Sendable {
         self.resolvedItems = resolvedItems
         self.clarifyOptions = clarifyOptions
         self.entryId = entryId
+        self.dayKey = dayKey
         self.itemIndex = itemIndex
         self.correctionOp = correctionOp
         self.freeTextGrams = freeTextGrams
@@ -322,6 +482,7 @@ struct PendingActionPayloadDTO: Codable, Equatable, Sendable {
         resolvedItems = try c.decodeIfPresent([ResolvedItemDTO].self, forKey: .resolvedItems) ?? []
         clarifyOptions = try c.decodeIfPresent([ClarifyOptionDTO].self, forKey: .clarifyOptions) ?? []
         entryId = try c.decodeIfPresent(String.self, forKey: .entryId)
+        dayKey = try c.decodeIfPresent(String.self, forKey: .dayKey)
         itemIndex = try c.decodeIfPresent(Int.self, forKey: .itemIndex)
         correctionOp = try c.decodeIfPresent(String.self, forKey: .correctionOp)
         freeTextGrams = try c.decodeIfPresent(Bool.self, forKey: .freeTextGrams) ?? false
@@ -331,7 +492,7 @@ struct PendingActionPayloadDTO: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case candidates, memoryText, suggestionOptions, resolvedItems, clarifyOptions
-        case entryId, itemIndex, correctionOp, freeTextGrams, manualLog, reason
+        case entryId, dayKey, itemIndex, correctionOp, freeTextGrams, manualLog, reason
     }
 }
 

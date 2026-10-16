@@ -1,6 +1,6 @@
 # Food search ranking (moat)
 
-Goal: **correct food for logging with minimal friction** — not “a hit.” Wrong confirm is worse than abstain → `web_search` / clarify.
+Goal: **correct food for logging with minimal friction** — not “a hit.” Wrong confirm is worse than abstain → clarify (or main-model web context, not harness web I/O).
 
 ## What the field does
 

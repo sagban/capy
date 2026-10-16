@@ -83,4 +83,22 @@ enum EnvironmentConfig {
     static var interpretMealURL: URL { environment.interpretMealURL }
 
     static func makeFunctions() -> Functions { environment.makeFunctions() }
+
+    static func callableURL(named functionName: String) -> URL {
+        environment.callableURL(named: functionName)
+    }
+}
+
+extension AppEnvironment {
+    func callableURL(named functionName: String) -> URL {
+        switch self {
+        case .local:
+            return baseURL
+                .appendingPathComponent(firebaseProjectID)
+                .appendingPathComponent(functionsRegion)
+                .appendingPathComponent(functionName)
+        case .prod:
+            return baseURL.appendingPathComponent(functionName)
+        }
+    }
 }

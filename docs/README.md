@@ -7,6 +7,8 @@
 | [architecture/harness.md](architecture/harness.md) | LangGraph |
 | [architecture/data-model.md](architecture/data-model.md) | SwiftData entities |
 | [architecture/api-contracts.md](architecture/api-contracts.md) | Callable DTOs |
+| [architecture/external-auth.md](architecture/external-auth.md) | MCP / HTTP bearer auth |
+| [architecture/alexa-setup.md](architecture/alexa-setup.md) | Alexa account linking + skill URLs |
 | [architecture/security.md](architecture/security.md) | Secrets + privacy |
 | [screens/inventory.md](screens/inventory.md) | Screen IA + Insights V1 scope |
 | [design/color-palette.md](design/color-palette.md) | App Color Palette |
@@ -15,6 +17,7 @@
 | [runbooks/secrets-and-quotas.md](runbooks/secrets-and-quotas.md) | Secret Manager / Gemini / USDA |
 | [architecture/food-search-ranking.md](architecture/food-search-ranking.md) | Multi-source food search ranking (moat) + evals |
 | [infra/project.md](infra/project.md) | GCP/Firebase binding status |
+| [deploy/README.md](../deploy/README.md) | Cloud Run `cappy-api` (healthz, token exchange, `/mcp` SSE) |
 | [infra/firebase-auth-checklist.md](infra/firebase-auth-checklist.md) | Apple + Google auth |
 | [seed/inventory.md](seed/inventory.md) | Seed foods/templates |
 | [prd-mapping.md](prd-mapping.md) | FR → issues |

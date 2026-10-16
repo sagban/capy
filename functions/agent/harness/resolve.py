@@ -1,4 +1,4 @@
-"""Deterministic food resolve: search, web citation, portion, queue."""
+"""Deterministic food resolve: catalog/USDA search, portion, queue."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from agent.harness.checks import density_ok
 from agent.harness.portions import resolve_portion
 from schemas import (
     ClarifyOption,
@@ -218,24 +217,11 @@ def _load_measures(hit: dict[str, Any], fetch_measures: Callable[[str], list[Any
     return _measures(fetched)
 
 
-def _provisional_hit(prefix: str, query: str, per: MacroTotals, citation: str | None, source: str) -> dict[str, Any]:
-    return {
-        "foodId": _stable_id(prefix, query),
-        "displayName": query.strip(),
-        "source": source,
-        "per100g": per,
-        "family": "",
-        "measures": [],
-        "citationUrl": citation,
-    }
-
-
 def resolve_one(
     draft: ItemDraft,
     *,
     search: Callable[[str], dict[str, Any]],
     fetch_measures: Callable[[str], list[Any]],
-    web: Callable[[str], Optional[dict[str, Any]]],
     clock: Callable[[], float],
     deadline: float,
 ) -> ItemResult:
@@ -285,22 +271,6 @@ def resolve_one(
     if clock() > deadline:
         return ItemResult(draft=draft, status="clarify_food", reason="deadline", manual_log=True, free_text=True)
 
-    described = " ".join(
-        part for part in (draft.brandOrVenue, draft.foodQuery) if part
-    ).strip() or draft.foodQuery
-    try:
-        web_hit = web(described)
-    except Exception:  # noqa: BLE001
-        web_hit = None
-    if isinstance(web_hit, dict) and isinstance(web_hit.get("per100g"), MacroTotals):
-        per = web_hit["per100g"]
-        url = str(web_hit.get("citationUrl") or "")
-        if url.startswith("http") and density_ok(per.calories, per.proteinG, per.carbsG, per.fatG):
-            hit = _provisional_hit("web_", described, per, url, "web")
-            committed = _committed_from_hit(hit, [])
-            if committed is not None:
-                return _apply_portion(draft, committed)
-
     return ItemResult(
         draft=draft,
         status="clarify_food",
@@ -344,7 +314,6 @@ def resolve_many(
     *,
     search: Callable[[str], dict[str, Any]],
     fetch_measures: Callable[[str], list[Any]],
-    web: Callable[[str], Optional[dict[str, Any]]],
     clock: Callable[[], float],
     deadline: float,
 ) -> list[ItemResult]:
@@ -357,7 +326,6 @@ def resolve_many(
             draft,
             search=search,
             fetch_measures=fetch_measures,
-            web=web,
             clock=clock,
             deadline=deadline,
         )

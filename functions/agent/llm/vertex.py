@@ -8,6 +8,8 @@ import os
 from functools import lru_cache
 from typing import Any, Optional
 
+from agent.llm.response_style import temperature_for_response_style
+
 logger = logging.getLogger("capy.vertex")
 
 DEFAULT_PROJECT = "capy-dogfood"
@@ -50,6 +52,7 @@ def generate_with_tools(
     user_content: str,
     tool_declarations: list[dict[str, Any]],
     history: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     """
     One agent turn. Returns:
@@ -60,6 +63,11 @@ def generate_with_tools(
     import phoenix_tracing
 
     model = _model()
+    sample_temp = (
+        temperature
+        if temperature is not None
+        else temperature_for_response_style(None)
+    )
     with phoenix_tracing.llm_span(
         "vertex_gemini",
         model=model,
@@ -80,7 +88,8 @@ def generate_with_tools(
                         )
                         for d in tool_declarations
                     ]
-                )
+                ),
+                types.Tool(google_search=types.GoogleSearch()),
             ]
 
             contents: list[Any] = []
@@ -105,7 +114,7 @@ def generate_with_tools(
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system,
-                    temperature=0.2,
+                    temperature=sample_temp,
                     tools=tools,
                 ),
             )
@@ -156,18 +165,28 @@ def generate_with_tools(
         return {"kind": "error", "message": "empty"}
 
 
-def generate_text(*, system: str, user_content: str) -> str:
+def generate_text(
+    *,
+    system: str,
+    user_content: str,
+    temperature: float | None = None,
+) -> str:
     """Short text completion with no tools. Empty string on failure."""
     try:
         from google.genai import types
 
         client = get_vertex_client()
+        sample_temp = (
+            temperature
+            if temperature is not None
+            else temperature_for_response_style(None)
+        )
         result = client.models.generate_content(
             model=_model(),
             contents=user_content,
             config=types.GenerateContentConfig(
                 system_instruction=system,
-                temperature=0.2,
+                temperature=sample_temp,
             ),
         )
         return (result.text or "").strip()

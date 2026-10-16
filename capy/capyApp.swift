@@ -24,8 +24,6 @@ struct capyApp: App {
                 MealTemplate.self,
                 MealTemplateItem.self,
                 SearchCacheEntry.self,
-                ConversationThread.self,
-                ConversationTurn.self,
                 LongTermMemoryNote.self,
             ])
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -37,7 +35,6 @@ struct capyApp: App {
         }()
         let context = sharedModelContainer.mainContext
         MealTypeCatalog.seedIfNeeded(in: context)
-        _ = ConversationMemoryStore.thread(in: context)
         _authManager = State(initialValue: AuthManager())
     }
 

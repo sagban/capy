@@ -130,6 +130,7 @@ struct GeneralSettingsView: View {
         s.foodMassUnit = foodMass
         s.bodyMassUnit = bodyMass
         s.weekStart = weekStart
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 }
 
@@ -299,6 +300,7 @@ struct GoalsSettingsView: View {
                 )
             )
         }
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 }
 
@@ -314,7 +316,10 @@ struct MealTypesSettingsView: View {
                 ForEach(mealTypes) { type in
                     Toggle(isOn: Binding(
                         get: { type.isEnabled },
-                        set: { type.isEnabled = $0 }
+                        set: {
+                            type.isEnabled = $0
+                            UserSyncService.shared.scheduleProfileSync(in: modelContext)
+                        }
                     )) {
                         HStack {
                             Text(type.name)
@@ -363,6 +368,7 @@ struct MealTypesSettingsView: View {
         let nextOrder = (mealTypes.map(\.sortOrder).max() ?? -1) + 1
         modelContext.insert(MealType(name: name, sortOrder: nextOrder, isEnabled: true, isSystem: false))
         draft = ""
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 
     private func deleteCustom(at offsets: IndexSet) {
@@ -371,6 +377,7 @@ struct MealTypesSettingsView: View {
             guard !type.isSystem else { continue }
             modelContext.delete(type)
         }
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 
     private func move(from source: IndexSet, to destination: Int) {
@@ -379,6 +386,7 @@ struct MealTypesSettingsView: View {
         for (index, type) in ordered.enumerated() {
             type.sortOrder = index
         }
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 }
 
@@ -464,6 +472,7 @@ private struct PreferenceMultiSelectSection: View {
         } else {
             modelContext.insert(UserPreference(kind: kind, value: option))
         }
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 }
 
@@ -472,6 +481,7 @@ struct CapySettingsView: View {
     @Query private var settings: [AppSettings]
 
     @State private var level: AssistanceLevel = .fullAssist
+    @State private var responseStyle: ResponseStyle = .balanced
     @State private var hour = 18
     @State private var minute = 0
     @State private var ready = false
@@ -486,6 +496,14 @@ struct CapySettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            Section("Reply style") {
+                Picker("Style", selection: $responseStyle) {
+                    ForEach(ResponseStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Text(responseStyle.subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             if level == .guided {
                 Section("Evening check-in (in-app)") {
                     Stepper("Hour: \(hour)", value: $hour, in: 12...22)
@@ -497,12 +515,17 @@ struct CapySettingsView: View {
         .onAppear {
             if let s = settings.first {
                 level = s.assistanceLevel
+                responseStyle = s.responseStyle
                 hour = s.guidedCheckInHour
                 minute = s.guidedCheckInMinute
             }
             DispatchQueue.main.async { ready = true }
         }
         .onChange(of: level) { _, _ in
+            guard ready else { return }
+            save()
+        }
+        .onChange(of: responseStyle) { _, _ in
             guard ready else { return }
             save()
         }
@@ -520,8 +543,10 @@ struct CapySettingsView: View {
         let s = settings.first ?? AppSettings()
         if settings.isEmpty { modelContext.insert(s) }
         s.assistanceLevel = level
+        s.responseStyle = responseStyle
         s.guidedCheckInHour = hour
         s.guidedCheckInMinute = minute
+        UserSyncService.shared.scheduleProfileSync(in: modelContext)
     }
 }
 

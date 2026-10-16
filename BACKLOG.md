@@ -64,7 +64,7 @@ Phase 0 = infra + documentation only. Feature coding starts Phase 1 ∥ Phase 2 
 
 ## Phase 1 — Harness Core
 
-**Implementation note (2026-10-12):** Slice A/B landed in-tree — Core remaining/variety/verifier + dial policy (XCTest), seed importer + Manual Log catalog search, conversation + Muse-style long-term memory + ContextBuilder, Functions LangGraph/tools/USDA + `pytest` goldens. Full Capy↔callable chat wiring remains Phase 3 (#48). Evidence: `capyTests/*`, `functions/tests/test_harness_goldens.py`, docs `api-contracts.md` / `harness.md`.
+**Implementation note (2026-10-12):** Slice A/B landed in-tree — Core remaining/variety/verifier + dial policy (XCTest), seed importer + Manual Log catalog search, conversation + Muse-style long-term memory + server context loader, Functions LangGraph/tools/USDA + `pytest` goldens. Full Capy↔callable chat wiring remains Phase 3 (#48). Evidence: `capyTests/*`, `functions/tests/test_harness_goldens.py`, docs `api-contracts.md` / `harness.md`.
 
 | Issue | Title |
 |-------|-------|

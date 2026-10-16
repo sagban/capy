@@ -13,8 +13,9 @@ Local pattern: `.env` (gitignored) for emulator; see [../runbooks/local-dev.md](
 ## Auth
 
 - Firebase Auth: **Google Sign-In** + **email/password** (Sign in with Apple deferred). Password policy is Firebase's default (min 6 chars)
-- Callable Functions validate ID token
+- Callable Functions validate Firebase ID token **or** short-lived Cappy access JWT (`exchange_access_token`; see [external-auth.md](external-auth.md))
 - No anonymous auth for V1 dogfood API (Sign in required)
+- `API_ACCESS_TOKEN_SECRET` (Secret Manager) signs access tokens for MCP/HTTP clients
 
 ## App Check
 

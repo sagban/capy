@@ -61,7 +61,7 @@ def _egg_search(query):
 
 
 def _install_search():
-    set_overrides(search=_egg_search, web=lambda _q: None, fetch_measures=lambda _fid: [])
+    set_overrides(search=_egg_search, fetch_measures=lambda _fid: [])
 
 
 def test_log_multi_item_confirm():
@@ -72,7 +72,7 @@ def test_log_multi_item_confirm():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "resolve_meal",
+                        "name": "new_entry",
                         "arguments": {
                             "items": [
                                 {"foodQuery": "egg", "quantity": 2, "unit": "large"},
@@ -99,7 +99,7 @@ def test_clarify_keeps_queue_for_the_next_message():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "resolve_meal",
+                        "name": "new_entry",
                         "arguments": {"items": [{"foodQuery": "chicken sandwich"}, {"foodQuery": "egg", "quantity": 1, "unit": "large"}]},
                     }
                 ],
@@ -114,7 +114,7 @@ def test_clarify_keeps_queue_for_the_next_message():
     assert not first["pendingAction"]["payload"].get("clarifyOptions")
 
 
-def test_edit_draft_changes_open_log():
+def test_new_entry_ops_change_open_log():
     _install_search()
     memory = {
         "draftLog": [
@@ -134,7 +134,7 @@ def test_edit_draft_changes_open_log():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "edit_draft",
+                        "name": "new_entry",
                         "arguments": {"ops": [{"op": "set_amount", "index": 0, "quantity": 3, "unit": "large"}]},
                     }
                 ],
@@ -183,7 +183,7 @@ def test_suggest_then_log_by_text():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "log_from_suggestion",
+                        "name": "new_entry",
                         "arguments": {"optionId": option_id, "ops": [{"op": "set_amount", "index": 0, "quantity": 1, "unit": "large"}]},
                     }
                 ],
@@ -238,7 +238,7 @@ def test_repeat_and_correct_by_entry_id():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "correct_entry",
+                        "name": "edit_entry",
                         "arguments": {
                             "entryId": "meal-1",
                             "itemIndex": 0,
@@ -255,6 +255,41 @@ def test_repeat_and_correct_by_entry_id():
     assert corrected["pendingAction"]["type"] == "confirm_correction"
     assert corrected["pendingAction"]["payload"]["entryId"] == "meal-1"
     assert corrected["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 80
+
+
+def test_delete_entry_stages_confirm_delete():
+    per = {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11}
+    diary = {
+        "today": [
+            {
+                "name": "Egg",
+                "mealSlot": "Lunch",
+                "grams": 100,
+                "entryId": "meal-friday",
+                "itemIndex": 0,
+                "foodId": "seed_egg",
+                "source": "catalog",
+                "per100g": per,
+                "ingredientFamily": "egg",
+            }
+        ],
+        "previousDays": [],
+        "remaining": {"calories": 1600, "proteinG": 80, "carbsG": 150, "fatG": 40},
+    }
+    push_mock_turns(
+        [
+            {
+                "kind": "tool_calls",
+                "calls": [{"name": "delete_entry", "arguments": {"entryId": "meal-friday"}}],
+            }
+        ]
+    )
+    out = run_interpret(_payload("delete friday lunch", diaryContext=diary))
+    normalize_outcome(out)
+    assert out["pendingAction"]["type"] == "confirm_delete"
+    assert out["pendingAction"]["payload"]["entryId"] == "meal-friday"
+    assert out["pendingAction"]["payload"]["dayKey"] == "2026-10-13"
+    assert "Egg" in (out["pendingAction"]["payload"].get("reason") or "")
 
 
 def test_suggest_drops_meat_when_user_said_vegetarian():
@@ -375,7 +410,7 @@ def test_combined_log_and_suggest():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "resolve_meal",
+                        "name": "new_entry",
                         "arguments": {"items": [{"foodQuery": "egg", "quantity": 1, "unit": "large"}]},
                     },
                     {
@@ -416,7 +451,7 @@ def test_oil_shot_is_not_a_suggested_meal():
             }
         return _egg_search(query)
 
-    set_overrides(search=search, web=lambda _q: None, fetch_measures=lambda _fid: [])
+    set_overrides(search=search, fetch_measures=lambda _fid: [])
     push_mock_turns(
         [
             {
@@ -462,7 +497,7 @@ def test_oil_on_eggs_is_clamped_to_two_tablespoons():
             }
         return _egg_search(query)
 
-    set_overrides(search=search, web=lambda _q: None, fetch_measures=lambda _fid: [])
+    set_overrides(search=search, fetch_measures=lambda _fid: [])
     push_mock_turns(
         [
             {
@@ -506,8 +541,8 @@ def test_bad_args_do_not_search_the_question_as_food():
     _install_search()
     push_mock_turns(
         [
-            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "resolve_meal", "arguments": {"items": []}}]},
-            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "resolve_meal", "arguments": {"items": []}}]},
+            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "new_entry", "arguments": {"items": []}}]},
+            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "new_entry", "arguments": {"items": []}}]},
         ]
     )
     out = run_interpret(_payload("egg"))
@@ -536,7 +571,7 @@ def test_executor_outputs_normalize():
     req = request_from_dict(_payload("egg"))
     out = run_calls(
         req,
-        [{"name": "resolve_meal", "arguments": {"items": [{"foodQuery": "egg", "quantity": 1, "unit": "large"}]}}],
+        [{"name": "new_entry", "arguments": {"items": [{"foodQuery": "egg", "quantity": 1, "unit": "large"}]}}],
     )
     out.pop("phraseFacts", None)
     out["assistantMessage"] = ""

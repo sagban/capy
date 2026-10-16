@@ -51,6 +51,26 @@ def diary_rows(req: InterpretMealRequest) -> list[Any]:
     return rows
 
 
+def resolve_entry_day_key(
+    req: InterpretMealRequest,
+    entry_id: str,
+    day_key: str | None = None,
+) -> str | None:
+    explicit = (day_key or "").strip()
+    if explicit:
+        return explicit
+    eid = entry_id.strip()
+    if not eid:
+        return None
+    if any(row.entryId == eid for row in req.diaryContext.today or []):
+        return (req.dayKey or "").strip() or None
+    for day in req.diaryContext.previousDays or []:
+        for row in day.entries or []:
+            if row.entryId == eid:
+                return (day.dayKey or "").strip() or None
+    return None
+
+
 def candidate(item: ResolvedItem) -> FoodCandidate:
     return FoodCandidate(
         foodId=item.foodId,

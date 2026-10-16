@@ -1,8 +1,7 @@
-"""Resolve pipeline: confidence, web citation, Atwater, deadline, queue."""
+"""Resolve pipeline: confidence, deadline, queue."""
 
-from schemas import ItemDraft, MacroTotals
+from schemas import ItemDraft
 
-from agent.harness.checks import density_ok
 from agent.harness.deps import set_overrides
 from agent.harness.resolve import query_list, resolve_many
 
@@ -56,7 +55,6 @@ def test_high_commits_with_portion():
         [ItemDraft(foodQuery="egg", quantity=2, unit="large")],
         search=search,
         fetch_measures=lambda _fid: [],
-        web=lambda _q: None,
         clock=lambda: 0,
         deadline=45,
     )
@@ -80,7 +78,6 @@ def test_medium_clarifies_top_candidates():
         [ItemDraft(foodQuery="chicken sandwich")],
         search=search,
         fetch_measures=lambda _fid: [],
-        web=lambda _q: (_ for _ in ()).throw(AssertionError("web")),
         clock=lambda: 0,
         deadline=45,
     )
@@ -88,72 +85,20 @@ def test_medium_clarifies_top_candidates():
     assert len(results[0].options) == 2
 
 
-def test_web_miss_clarifies_with_manual_log():
-    calls = {"web": 0}
-
+def test_search_miss_clarifies_with_manual_log():
     def search(_q):
         return {"results": [], "candidatesForClarify": [], "confidence": "none"}
-
-    def web(_q):
-        calls["web"] += 1
-        return None
 
     missed = resolve_many(
         [ItemDraft(foodQuery="mystery foam")],
         search=search,
         fetch_measures=lambda _fid: [],
-        web=web,
         clock=lambda: 0,
         deadline=45,
     )
-    assert calls == {"web": 1}
     assert missed[0].status == "clarify_food"
     assert missed[0].reason == "not_found"
     assert missed[0].manual_log is True
-
-    def web_ok(_q):
-        return {
-            "per100g": MacroTotals(calories=200, proteinG=10, carbsG=20, fatG=8),
-            "citationUrl": "https://example.com/foam",
-        }
-
-    # 4*10 + 4*20 + 9*8 = 40+80+72 = 192; |200-192|=8 <= 30.
-    assert density_ok(200, 10, 20, 8)
-    web_hit = resolve_many(
-        [ItemDraft(foodQuery="mystery foam", quantity=100, unit="g")],
-        search=search,
-        fetch_measures=lambda _fid: [],
-        web=web_ok,
-        clock=lambda: 0,
-        deadline=45,
-    )
-    assert web_hit[0].status == "resolved"
-    assert web_hit[0].item.source == "web"
-    assert web_hit[0].item.citationUrl.startswith("https://")
-
-
-def test_atwater_rejection_clarifies():
-    def search(_q):
-        return {"results": [], "candidatesForClarify": [], "confidence": "none"}
-
-    def web(_q):
-        return {
-            "per100g": MacroTotals(calories=100, proteinG=0, carbsG=0, fatG=0),
-            "citationUrl": "https://example.com/bad",
-        }
-
-    assert not density_ok(100, 0, 0, 0)
-    results = resolve_many(
-        [ItemDraft(foodQuery="mystery foam", quantity=100, unit="g")],
-        search=search,
-        fetch_measures=lambda _fid: [],
-        web=web,
-        clock=lambda: 0,
-        deadline=45,
-    )
-    assert results[0].status == "clarify_food"
-    assert results[0].manual_log is True
-    assert results[0].item is None
 
 
 def test_deadline_pauses_as_clarify():
@@ -169,7 +114,6 @@ def test_deadline_pauses_as_clarify():
         [ItemDraft(foodQuery="egg")],
         search=lambda _q: (_ for _ in ()).throw(AssertionError("search")),
         fetch_measures=lambda _fid: [],
-        web=lambda _q: None,
         clock=lambda: 100,
         deadline=10,
     )
@@ -195,7 +139,6 @@ def test_queue_pauses_on_first_clarify_and_keeps_later_drafts():
         ],
         search=search,
         fetch_measures=lambda _fid: [],
-        web=lambda _q: None,
         clock=lambda: 0,
         deadline=45,
     )

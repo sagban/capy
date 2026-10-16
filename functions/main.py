@@ -17,34 +17,36 @@ from firebase_admin import initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
-from agent.graph import run_interpret
-from schemas import request_from_dict
+from agent.auth import AuthError, exchange_firebase_for_access, resolve_callable_uid
+from interpret_api import interpret_meal_for_uid
+from user_api import (
+    handle_delete_meal,
+    handle_get_thread,
+    handle_log_meal,
+    handle_patch_profile,
+    handle_patch_thread,
+)
 
 logger = logging.getLogger("capy.interpret_meal")
 
 initialize_app()
 
 USDA_FDC_API_KEY = SecretParam("USDA_FDC_API_KEY")
+API_ACCESS_TOKEN_SECRET = SecretParam("API_ACCESS_TOKEN_SECRET")
 
 
 @https_fn.on_call(
     region="us-central1",
     memory=options.MemoryOption.MB_512,
     timeout_sec=120,
-    secrets=[USDA_FDC_API_KEY],
+    secrets=[USDA_FDC_API_KEY, API_ACCESS_TOKEN_SECRET],
 )
 def interpret_meal(req: https_fn.CallableRequest) -> dict:
     """Authenticated callable — ReAct agent + tools + HITL."""
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
-            message="Sign in required.",
-        )
+    uid = resolve_callable_uid(req)
     raw = req.data if isinstance(req.data, dict) else {}
-    utterance = str(raw.get("utterance") or "")[:80]
-    logger.info("interpret_meal start utterance=%r", utterance)
     try:
-        parsed = request_from_dict(raw)
+        return interpret_meal_for_uid(uid, raw)
     except Exception as exc:  # noqa: BLE001
         logger.warning("interpret_meal invalid payload: %s", exc)
         raise https_fn.HttpsError(
@@ -52,50 +54,75 @@ def interpret_meal(req: https_fn.CallableRequest) -> dict:
             message="Couldn’t read that request. Try again.",
         ) from exc
 
-    try:
-        with phoenix_tracing.chain_span(
-            "interpret_meal",
-            input_value=utterance,
-        ) as root:
-            response = run_interpret(
-                parsed.model_dump(mode="json"),
-                uid=req.auth.uid,
-            )
-            # Strip free-floating macro fields from candidates; keep provisionalPer100g for web.
-            for candidate in response.get("candidates") or []:
-                if not isinstance(candidate, dict):
-                    continue
-                source = (candidate.get("source") or "").lower()
-                for key in ("calories", "proteinG", "carbsG", "fatG"):
-                    candidate.pop(key, None)
-                if source not in {"web", "diary"} and not source.startswith("web"):
-                    candidate.pop("per100g", None)
-            phoenix_tracing.set_output(
-                root,
-                {
-                    "intent": response.get("intent"),
-                    "assistantMessage": response.get("assistantMessage"),
-                    "pendingAction": (response.get("pendingAction") or {}).get("type")
-                    if isinstance(response.get("pendingAction"), dict)
-                    else None,
-                    "warnings": response.get("warnings"),
-                },
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("interpret_meal run failed: %s", exc)
-        return {
-            "intent": "unknown",
-            "candidates": [],
-            "assistantMessage": "",
-            "warnings": ["agent_unavailable"],
-            "memoryProposals": [],
-            "pendingAction": None,
-            "suggestionOptions": [],
-        }
 
-    logger.info(
-        "interpret_meal done intent=%s msg_len=%s",
-        response.get("intent"),
-        len(response.get("assistantMessage") or ""),
-    )
-    return response
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def patch_profile(req: https_fn.CallableRequest) -> dict:
+    """Merge profile fields on users/{uid} (meal plan, prefs, targets, timezone)."""
+    return handle_patch_profile(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def log_meal(req: https_fn.CallableRequest) -> dict:
+    """Write a confirmed meal to users/{uid}/days/{dayKey}/entries/{entryId}."""
+    return handle_log_meal(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def delete_meal(req: https_fn.CallableRequest) -> dict:
+    """Soft-delete a meal entry at users/{uid}/days/{dayKey}/entries/{entryId}."""
+    return handle_delete_meal(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=30,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def get_thread(req: https_fn.CallableRequest) -> dict:
+    """Read users/{uid}/threads/{threadId} for Capy chat history."""
+    return handle_get_thread(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=30,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def patch_thread(req: https_fn.CallableRequest) -> dict:
+    """Append assistant turns or day-rollover notes on the conversation thread."""
+    return handle_patch_thread(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=30,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def exchange_access_token(req: https_fn.CallableRequest) -> dict:
+    """Exchange a Firebase ID token for a short-lived Cappy access token (MCP / HTTP clients)."""
+    raw = req.data if isinstance(req.data, dict) else {}
+    try:
+        return exchange_firebase_for_access(raw)
+    except AuthError as exc:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message=str(exc),
+        ) from exc

@@ -1,8 +1,8 @@
-"""Slot budget: stated, median of 3 days, weighted defaults, flex multiplier, snacks."""
+"""Slot budget: stated, median of 3 days, weighted defaults, snacks."""
 
 from schemas import request_from_dict
 
-from agent.harness.meal_budget import fit_label, normalize_flex_multiplier, slot_budget
+from agent.harness.meal_budget import fit_label, slot_budget
 
 
 def _req(today=None, previous=None, remaining=None):
@@ -121,38 +121,3 @@ def test_under_calorie_target_is_within():
 
 def test_smaller_meal_is_within_even_with_low_protein():
     assert fit_label(350, 10, {"calories": 700, "proteinG": 40}) == "within"
-
-
-def test_flex_multiplier_scales_guide():
-    base = slot_budget(_req(), "lunch", None)
-    flexed = slot_budget(_req(), "lunch", None, flex_multiplier=1.5)
-    assert flexed["calories"] == base["calories"] * 1.5
-    assert flexed.get("guideCalories") == base["calories"]
-    assert flexed.get("flexMultiplier") == 1.5
-
-
-def test_flex_multiplier_capped_at_remaining():
-    flexed = slot_budget(
-        _req(remaining={"calories": 500, "proteinG": 40, "carbsG": 50, "fatG": 15}),
-        "lunch",
-        None,
-        flex_multiplier=3.0,
-    )
-    assert flexed["calories"] == 500
-
-
-def test_normalize_flex_multiplier_rejects_invalid():
-    assert normalize_flex_multiplier(None) == 1.0
-    assert normalize_flex_multiplier(0.5) == 1.0
-    assert normalize_flex_multiplier("bad") == 1.0
-
-
-def test_stated_budget_ignores_flex_multiplier():
-    budget = slot_budget(
-        _req(),
-        "lunch",
-        {"calories": 1200, "proteinG": 70},
-        flex_multiplier=1.5,
-    )
-    assert budget["calories"] == 1200
-    assert "flexMultiplier" not in budget

@@ -9,6 +9,7 @@ BLOCKING = {
     PendingActionType.clarify_portion,
     PendingActionType.confirm_log,
     PendingActionType.confirm_correction,
+    PendingActionType.confirm_delete,
 }
 
 
@@ -45,6 +46,10 @@ def _check_pending(response: InterpretMealResponse) -> None:
             raise OutcomeError("confirm_correction op")
         if payload.correctionOp != "remove" and not payload.resolvedItems:
             raise OutcomeError("confirm_correction needs the replacement item")
+        return
+    if pending.type == PendingActionType.confirm_delete:
+        if not payload.entryId or not (payload.dayKey or "").strip():
+            raise OutcomeError("confirm_delete needs entryId and dayKey")
         return
 
 

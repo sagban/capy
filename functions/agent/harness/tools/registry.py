@@ -14,7 +14,7 @@ from schemas import ItemDraft
 from agent.harness.tools.common import memory_proposal
 from agent.harness.tools import jobs
 
-Kind = Literal["primary", "suggestions", "memory", "lookup"]
+Kind = Literal["primary", "suggestions", "memory"]
 Ctx = Annotated[dict[str, Any], InjectedToolArg]
 
 
@@ -46,17 +46,25 @@ class DraftOp(BaseModel):
     item: Optional[ItemDraft] = None
 
 
-class ResolveMealArgs(BaseModel):
-    items: list[ItemDraft] = Field(min_length=1)
+class NewEntryArgs(BaseModel):
+    items: Optional[list[ItemDraft]] = Field(
+        default=None,
+        description="Foods to resolve into a new meal entry for the user to confirm.",
+    )
+    ops: Optional[list[DraftOp]] = Field(
+        default=None,
+        description="Edits on the staged entry before confirm (set_amount, remove, add, replace).",
+    )
+    optionId: Optional[str] = Field(
+        default=None,
+        description="Start from a stored suggestion (lastSuggestionOptions id) before ops/items.",
+    )
 
-
-class EditDraftArgs(BaseModel):
-    ops: list[DraftOp] = Field(min_length=1)
-
-
-class LogFromSuggestionArgs(BaseModel):
-    optionId: str
-    ops: list[DraftOp] = Field(default_factory=list)
+    @model_validator(mode="after")
+    def _needs_payload(self) -> NewEntryArgs:
+        if not self.items and not self.ops and not self.optionId:
+            raise ValueError("new_entry needs items, ops, or optionId")
+        return self
 
 
 class ComposeSuggestionsArgs(BaseModel):
@@ -74,7 +82,7 @@ class RepeatPriorMealArgs(BaseModel):
     entryIds: list[str] = Field(min_length=1)
 
 
-class CorrectEntryArgs(BaseModel):
+class EditEntryArgs(BaseModel):
     entryId: str
     itemIndex: int
     op: Literal["set_amount", "replace", "remove"]
@@ -83,8 +91,12 @@ class CorrectEntryArgs(BaseModel):
     item: Optional[ItemDraft] = None
 
 
-class LookupMenuArgs(BaseModel):
-    venue: str
+class DeleteEntryArgs(BaseModel):
+    entryId: str
+    dayKey: Optional[str] = Field(
+        default=None,
+        description="Calendar day key (YYYY-MM-DD). Omit when the entry is on today in the pack.",
+    )
 
 
 class SaveMemoryArgs(BaseModel):
@@ -139,45 +151,39 @@ def _declaration(lc: BaseTool) -> dict[str, Any]:
     }
 
 
-@tool(args_schema=ResolveMealArgs)
-def resolve_meal(items: list[ItemDraft], ctx: Ctx = None) -> dict[str, Any]:
-    """Log foods the user said they ate. Opens the confirm sheet.
+@tool(args_schema=NewEntryArgs)
+def new_entry(
+    items: list[ItemDraft] | None = None,
+    ops: list[DraftOp] | None = None,
+    optionId: Optional[str] = None,
+    ctx: Ctx = None,
+) -> dict[str, Any]:
+    """Stage a new meal for human-in-the-loop confirm (confirm_log) before anything is written to the diary.
+
+    When to use: The user is logging or correcting a staged meal — they named foods, want to log a
+    prior suggestion, or are tweaking the open draft (ops). Safe to combine with compose_suggestions
+    or save_memory in the same turn.
+
+    When not to use: If they only ask what they ate or what's left, answer from the context pack
+    in text without calling a tool.
 
     Args:
-        items: Foods to resolve. Omit quantity when they did not say how much.
+        items: One row per food (foodQuery, quantity, unit). Omit quantity/unit only if they did not
+            say how much. Example: foodQuery rice, quantity 1, unit cup.
+        ops: Edits on the staged entry; indices match episodic.openWork / workingMemory.draftLog.
+        optionId: Id from episodic.lastSuggestionOptions to log a prior compose_suggestions option,
+            then optional ops/items.
+
+    In your reply, confirm what you are about to log. For restaurants, set brandOrVenue on items.
     """
-    return jobs.resolve_meal(
+    return jobs.new_entry(
         ctx["req"],
-        [item.model_dump() for item in items],
+        items=[item.model_dump() for item in items] if items else None,
+        ops=[op.model_dump() for op in ops] if ops else None,
+        option_id=optionId,
         memory=ctx["memory"],
         proposals=ctx["proposals"],
     )
-
-
-@tool(args_schema=EditDraftArgs)
-def edit_draft(ops: list[DraftOp], ctx: Ctx = None) -> dict[str, Any]:
-    """Edit the open confirm draft.
-
-    Args:
-        ops: Ordered edits against draftLog or resolveQueue in the pack.
-    """
-    return jobs.edit_draft(ctx["req"], [op.model_dump() for op in ops])
-
-
-@tool(args_schema=LogFromSuggestionArgs)
-def log_from_suggestion(
-    optionId: str,
-    ops: list[DraftOp] | None = None,
-    ctx: Ctx = None,
-) -> dict[str, Any]:
-    """Copy a stored suggestion into the confirm sheet.
-
-    Args:
-        optionId: Id from lastSuggestionOptions in the pack (opt1, opt2, …).
-        ops: Optional edits after copying.
-    """
-    dumped = [op.model_dump() for op in ops] if ops else None
-    return jobs.log_from_suggestion(ctx["req"], optionId, dumped, memory=ctx["memory"])
 
 
 @tool(args_schema=ComposeSuggestionsArgs)
@@ -189,14 +195,27 @@ def compose_suggestions(
     appetite: Optional[AppetiteLevel] = None,
     ctx: Ctx = None,
 ) -> dict[str, Any]:
-    """Draft 2 or 3 different meals for the slot they asked for. Do not write calorie or macro totals.
+    """Propose 2–3 concrete meal ideas for a slot (non-blocking; user logs later via new_entry + optionId).
+
+    When to use: They want meal ideas, what to eat next, or a restaurant order that fits remaining
+    macros. Use real portions (2 eggs, 1 cup rice, 1 tbsp dressing). Respect semantic.assistanceLevel
+    — do not suggest in quiet unless they asked.
+
+    When not to use: If they only ask what they ate or what's left, answer from the context pack
+    in text without calling a tool.
+
+    Do not write calorie or macro totals in chat; the harness computes totals.
 
     Args:
-        drafts: Meal options. Every item needs foodQuery, quantity, and unit as a sitting.
+        drafts: 2–3 options; every item needs foodQuery, quantity, and unit as a sitting.
         mealSlot: Slot to size against when the user named one.
-        venue: Restaurant or place, when relevant.
-        budget: Explicit macro ceiling (up to remaining). Overrides the guide when set.
-        appetite: light, normal, or hearty — from how much they want to eat; omit for normal.
+        venue: Restaurant or place, when relevant (also set brandOrVenue on draft items).
+        budget: Explicit macro ceiling up to remaining; overrides the guide when set.
+        appetite: light, normal, or hearty from how much they want to eat; omit for normal.
+
+    In your reply, name options in plain language and tie them to what's left today. Warm and
+    specific beats one-word answers. semantic.slotBudgets are guides; set appetite from intent or
+    pass budget up to semantic.remaining. Prefer variety; avoid repeating semantic.todayFamilies.
     """
     del venue
     from agent.harness.meal_budget import normalize_appetite
@@ -214,16 +233,21 @@ def compose_suggestions(
 
 @tool(args_schema=RepeatPriorMealArgs)
 def repeat_prior_meal(entryIds: list[str], ctx: Ctx = None) -> dict[str, Any]:
-    """Copy diary entries into the confirm sheet. Do not re-search them.
+    """Copy existing diary rows into the confirm sheet without re-searching foods.
+
+    When to use: They want the same meal again (repeat lunch, log that again).
+
+    When not to use: If they only ask what they ate or what's left, answer from the context pack
+    in text without calling a tool.
 
     Args:
-        entryIds: Diary entry ids from the pack.
+        entryIds: Diary entry ids from semantic.today or previousDays in the pack.
     """
     return jobs.repeat_prior_meal(ctx["req"], list(entryIds))
 
 
-@tool(args_schema=CorrectEntryArgs)
-def correct_entry(
+@tool(args_schema=EditEntryArgs)
+def edit_entry(
     entryId: str,
     itemIndex: int,
     op: Literal["set_amount", "replace", "remove"],
@@ -232,17 +256,23 @@ def correct_entry(
     item: Optional[ItemDraft] = None,
     ctx: Ctx = None,
 ) -> dict[str, Any]:
-    """Correct one diary item by entryId and itemIndex.
+    """Change one line on an already-logged meal (HITL confirm_correction).
+
+    When to use: They correct a logged item (amount, swap, remove one line) — not for staging a
+    brand-new meal (use new_entry).
+
+    When not to use: If they only ask what they ate or what's left, answer from the context pack
+    in text without calling a tool.
 
     Args:
-        entryId: Diary entry to change.
+        entryId: Diary entry to change (from the pack).
         itemIndex: Item index inside that entry.
         op: set_amount, replace, or remove.
         quantity: New amount when op is set_amount.
         unit: Unit for the new amount.
         item: Replacement food when op is replace.
     """
-    return jobs.correct_entry(
+    return jobs.edit_entry(
         ctx["req"],
         entry_id=entryId,
         item_index=itemIndex,
@@ -253,15 +283,20 @@ def correct_entry(
     )
 
 
-@tool(args_schema=LookupMenuArgs)
-def lookup_menu(venue: str, ctx: Ctx = None) -> dict[str, Any]:
-    """Restaurant menu names only. Ignore any numbers.
+@tool(args_schema=DeleteEntryArgs)
+def delete_entry(entryId: str, dayKey: Optional[str] = None, ctx: Ctx = None) -> dict[str, Any]:
+    """Stage removal of a whole logged entry (HITL confirm_delete) before Firestore delete.
+
+    When to use: They want to delete an entire meal entry, not edit one line (use edit_entry).
+
+    When not to use: If they only ask what they ate or what's left, answer from the context pack
+    in text without calling a tool.
 
     Args:
-        venue: Restaurant or chain to look up.
+        entryId: Diary entry id from the context pack.
+        dayKey: Day YYYY-MM-DD when the entry is not on today in the pack.
     """
-    del ctx
-    return jobs.fetch_menu(venue)
+    return jobs.delete_entry(ctx["req"], entry_id=entryId, day_key=dayKey)
 
 
 @tool(args_schema=SaveMemoryArgs)
@@ -271,12 +306,18 @@ def save_memory(
     noteId: Optional[str] = None,
     ctx: Ctx = None,
 ) -> dict[str, Any]:
-    """Add or remove a long-term memory note. Can accompany any other tool.
+    """Add or remove a long-term memory note (client applies memoryProposals).
+
+    When to use: They state a durable preference or fact, or ask to forget a note. May accompany
+    any other tool in the same turn.
+
+    When not to use: If they only ask what they ate or what's left, answer from the context pack
+    in text without calling a tool.
 
     Args:
         op: add a note or remove one by id.
         text: Note text when adding.
-        noteId: Existing note id when removing.
+        noteId: Existing note id when removing (from longTerm.notes in the pack).
     """
     proposal = memory_proposal(op, text, noteId)
     if proposal is None:
@@ -291,13 +332,11 @@ def _kind(lc: BaseTool, kind: Kind) -> BaseTool:
 
 
 CAPY_TOOLS: list[BaseTool] = [
-    _kind(resolve_meal, "primary"),
-    _kind(edit_draft, "primary"),
-    _kind(log_from_suggestion, "primary"),
+    _kind(new_entry, "primary"),
     _kind(compose_suggestions, "suggestions"),
     _kind(repeat_prior_meal, "primary"),
-    _kind(correct_entry, "primary"),
-    _kind(lookup_menu, "lookup"),
+    _kind(edit_entry, "primary"),
+    _kind(delete_entry, "primary"),
     _kind(save_memory, "memory"),
 ]
 

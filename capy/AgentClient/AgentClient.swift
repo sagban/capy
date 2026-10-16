@@ -57,28 +57,49 @@ actor AgentClient {
 
     /// Firebase callable wire format against the Functions emulator HTTP endpoint.
     private func callEmulator(payload: [String: Any]) async throws -> InterpretMealResponseDTO {
+        let dict = try await postEmulatorCallable(name: EnvironmentConfig.functionsName, payload: payload)
+        return try decodeResponse(dict)
+    }
+
+    func callCallable(_ name: String, payload: [String: Any]) async throws -> [String: Any] {
+        guard Auth.auth().currentUser != nil else {
+            throw AgentClientError.unauthenticated
+        }
+        let body = Self.stripNulls(payload)
+        if EnvironmentConfig.isLocal {
+            return try await postEmulatorCallable(name: name, payload: body)
+        }
+        let callable = EnvironmentConfig.makeFunctions().httpsCallable(name)
+        callable.timeoutInterval = 60
+        let result = try await callable.call(body)
+        return try Self.decodeDictionary(result.data)
+    }
+
+    static func stripNulls(_ dict: [String: Any]) -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (key, nested) in dict {
+            if nested is NSNull { continue }
+            out[key] = stripNullValue(nested)
+        }
+        return out
+    }
+
+    private func postEmulatorCallable(name: String, payload: [String: Any]) async throws -> [String: Any] {
         guard let user = Auth.auth().currentUser else {
             throw AgentClientError.unauthenticated
         }
         let token = try await user.getIDToken()
-        var request = URLRequest(url: EnvironmentConfig.interpretMealURL)
+        var request = URLRequest(url: EnvironmentConfig.callableURL(named: name))
         request.httpMethod = "POST"
-        request.timeoutInterval = 120
+        request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["data": payload])
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
+        guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
             throw AgentClientError.unavailable
         }
-        #if DEBUG
-        print("[AgentClient] emulator HTTP \(http.statusCode) bytes=\(data.count)")
-        #endif
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw AgentClientError.unavailable
-        }
-
         let envelope = try JSONSerialization.jsonObject(with: data)
         guard let dict = envelope as? [String: Any] else {
             throw AgentClientError.unavailable
@@ -86,20 +107,26 @@ actor AgentClient {
         if dict["error"] != nil {
             throw AgentClientError.unavailable
         }
-        guard let result = dict["result"] else {
-            // Some emulator paths return the body unwrapped.
-            return try decodeResponse(dict)
+        if let result = dict["result"] {
+            return try Self.decodeDictionary(result)
         }
-        return try decodeResponse(result)
+        return try Self.decodeDictionary(dict)
     }
 
-    private static func stripNulls(_ dict: [String: Any]) -> [String: Any] {
-        var out: [String: Any] = [:]
-        for (key, nested) in dict {
-            if nested is NSNull { continue }
-            out[key] = stripNullValue(nested)
+    private static func decodeDictionary(_ data: Any) throws -> [String: Any] {
+        if let dict = data as? [String: Any] {
+            return dict
         }
-        return out
+        let jsonData: Data
+        if let raw = data as? Data {
+            jsonData = raw
+        } else {
+            jsonData = try JSONSerialization.data(withJSONObject: data)
+        }
+        guard let dict = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw AgentClientError.unavailable
+        }
+        return dict
     }
 
     private static func stripNullValue(_ value: Any) -> Any {

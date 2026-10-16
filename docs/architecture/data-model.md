@@ -55,10 +55,9 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 - `id`, `text`, `createdAt`, `updatedAt`, `source`: user | agent
 - Editable in Capy **Memory** sheet; agent may propose add/update/delete
 
-### ConversationThread / ConversationTurn
-- Singleton long-running Capy chat
-- Thread: `summary`, `updatedAt`
-- Turn: `role` (user|assistant), `text`, optional `structuredPayload` (working memory)
+### Capy thread (server)
+- Firestore: `users/{uid}/threads/{threadId}` with rolling window + `workingMemory`; message archive under `messages/{messageId}`
+- iOS loads pages via `get_thread` / `interpret_meal` response; no local SwiftData chat thread model
 
 ### AppSettings
 - Assistance dial: `fullAssist` | `guided` | `quiet`

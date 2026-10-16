@@ -1,0 +1,33 @@
+# Cloud Run service for Cappy HTTP API + MCP (single container).
+# Build: docker build -t gcr.io/capy-dogfood/cappy-api:latest functions
+# Deploy: gcloud run services replace deploy/cloudrun-service.yaml --region us-central1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: cappy-api
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      containerConcurrency: 20
+      timeoutSeconds: 300
+      containers:
+        - image: gcr.io/capy-dogfood/cappy-api:latest
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: CAPY_PROJECT_ID
+              value: capy-dogfood
+            - name: GOOGLE_CLOUD_PROJECT
+              value: capy-dogfood
+          resources:
+            limits:
+              memory: 1Gi
+              cpu: "1"
+          # Bind secrets in Cloud Console or via:
+          # gcloud run services update cappy-api --set-secrets=API_ACCESS_TOKEN_SECRET=API_ACCESS_TOKEN_SECRET:latest,USDA_FDC_API_KEY=USDA_FDC_API_KEY:latest

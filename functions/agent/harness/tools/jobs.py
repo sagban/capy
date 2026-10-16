@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from typing import Any, Optional
 
@@ -19,6 +18,7 @@ from agent.harness.tools.common import (
     diary_rows,
     item_results_from_resolved,
     pending,
+    resolve_entry_day_key,
     results_to_outcome,
     scale,
 )
@@ -37,94 +37,19 @@ from schemas import (
 )
 
 
-def resolve_meal(
+def _draft_items_from_memory(memory: WorkingMemory) -> list[ResolvedItem]:
+    if memory.draftLog:
+        return [item.model_copy(deep=True) for item in memory.draftLog]
+    if memory.resolveQueue is not None:
+        return [item.model_copy(deep=True) for item in memory.resolveQueue.resolved]
+    return []
+
+
+def _items_from_suggestion_option(
     req: InterpretMealRequest,
-    items: list[dict[str, Any]],
-    *,
-    memory: Optional[WorkingMemory] = None,
-    proposals: Optional[list[MemoryProposal]] = None,
-    correction: Optional[tuple[str, int, str]] = None,
-) -> dict[str, Any]:
-    memory = memory or blank_memory(req)
-    proposals = proposals or []
-    drafts = [ItemDraft.model_validate(item) for item in items]
-    deps, deadline = deps_deadline(req)
-    results = resolve_many(
-        drafts,
-        search=deps["search"],
-        fetch_measures=deps["fetch_measures"],
-        web=deps["web"],
-        clock=deps["clock"],
-        deadline=deadline,
-    )
-    return results_to_outcome(
-        req,
-        results,
-        memory=memory,
-        proposals=proposals,
-        correction=correction,
-    )
-
-
-def edit_draft(req: InterpretMealRequest, ops: list[dict[str, Any]]) -> dict[str, Any]:
-    memory = blank_memory(req)
-    items = [item.model_copy(deep=True) for item in (memory.draftLog or [])]
-    if not items and memory.resolveQueue is not None:
-        items = [item.model_copy(deep=True) for item in memory.resolveQueue.resolved]
-    added: list[ItemDraft] = []
-    for op in ops or []:
-        kind = str(op.get("op") or "")
-        index = op.get("index")
-        if kind == "remove":
-            if not isinstance(index, int) or not 0 <= index < len(items):
-                return chat(req, memory, {"reason": "that item is not in the open log"})
-            del items[index]
-            continue
-        if kind == "set_amount":
-            if not isinstance(index, int) or not 0 <= index < len(items):
-                return chat(req, memory, {"reason": "that item is not in the open log"})
-            updated = apply_amount(items[index], float(op.get("quantity") or 0), op.get("unit"))
-            if updated is None:
-                return chat(req, memory, {"reason": "need a unit for that amount", "food": items[index].displayName})
-            items[index] = updated
-            continue
-        if kind == "add":
-            added.append(ItemDraft.model_validate(op.get("item") or {}))
-            continue
-        if kind == "replace":
-            if not isinstance(index, int) or not 0 <= index < len(items):
-                return chat(req, memory, {"reason": "that item is not in the open log"})
-            del items[index]
-            added.append(ItemDraft.model_validate(op.get("item") or {}))
-            continue
-        return {"error": "bad_args", "message": f"unknown edit op {kind}"}
-
-    resolved_results = item_results_from_resolved(items)
-    if not added and not items:
-        return chat(req, memory, {"reason": "the open log is empty"})
-    if not added:
-        memory.draftLog = items
-        return results_to_outcome(req, resolved_results, memory=memory, proposals=[])
-
-    deps, deadline = deps_deadline(req)
-    tail = resolve_many(
-        added,
-        search=deps["search"],
-        fetch_measures=deps["fetch_measures"],
-        web=deps["web"],
-        clock=deps["clock"],
-        deadline=deadline,
-    )
-    return results_to_outcome(req, resolved_results + tail, memory=memory, proposals=[])
-
-
-def log_from_suggestion(
-    req: InterpretMealRequest,
+    memory: WorkingMemory,
     option_id: str,
-    ops: list[dict[str, Any]] | None,
-    memory: Optional[WorkingMemory] = None,
-) -> dict[str, Any]:
-    memory = memory or blank_memory(req)
+) -> list[ResolvedItem] | dict[str, Any]:
     option = next((opt for opt in memory.lastSuggestionOptions if opt.id == option_id), None)
     if option is None:
         return chat(req, memory, {"reason": "that option is not in the last suggestions"})
@@ -146,19 +71,110 @@ def log_from_suggestion(
                 measures=list(raw.measures or []),
             )
         )
+    return items
+
+
+def _apply_draft_ops(
+    req: InterpretMealRequest,
+    memory: WorkingMemory,
+    items: list[ResolvedItem],
+    ops: list[dict[str, Any]],
+) -> tuple[list[ResolvedItem], list[ItemDraft], dict[str, Any] | None]:
+    added: list[ItemDraft] = []
+    for op in ops or []:
+        kind = str(op.get("op") or "")
+        index = op.get("index")
+        if kind == "remove":
+            if not isinstance(index, int) or not 0 <= index < len(items):
+                return items, added, chat(req, memory, {"reason": "that item is not in the open log"})
+            del items[index]
+            continue
+        if kind == "set_amount":
+            if not isinstance(index, int) or not 0 <= index < len(items):
+                return items, added, chat(req, memory, {"reason": "that item is not in the open log"})
+            updated = apply_amount(items[index], float(op.get("quantity") or 0), op.get("unit"))
+            if updated is None:
+                return (
+                    items,
+                    added,
+                    chat(req, memory, {"reason": "need a unit for that amount", "food": items[index].displayName}),
+                )
+            items[index] = updated
+            continue
+        if kind == "add":
+            added.append(ItemDraft.model_validate(op.get("item") or {}))
+            continue
+        if kind == "replace":
+            if not isinstance(index, int) or not 0 <= index < len(items):
+                return items, added, chat(req, memory, {"reason": "that item is not in the open log"})
+            del items[index]
+            added.append(ItemDraft.model_validate(op.get("item") or {}))
+            continue
+        return items, added, {"error": "bad_args", "message": f"unknown edit op {kind}"}
+    return items, added, None
+
+
+def new_entry(
+    req: InterpretMealRequest,
+    *,
+    items: list[dict[str, Any]] | None = None,
+    ops: list[dict[str, Any]] | None = None,
+    option_id: str | None = None,
+    memory: Optional[WorkingMemory] = None,
+    proposals: Optional[list[MemoryProposal]] = None,
+    correction: Optional[tuple[str, int, str]] = None,
+) -> dict[str, Any]:
+    """Stage a new meal entry (resolve foods, ops, or suggestion) for HITL confirm_log."""
+    memory = memory or blank_memory(req)
+    proposals = proposals or []
+    if not option_id and not ops and not items:
+        return {"error": "bad_args", "message": "new_entry needs optionId, ops, or items"}
+
+    draft_items = _draft_items_from_memory(memory) if not option_id else []
+    if option_id:
+        loaded = _items_from_suggestion_option(req, memory, option_id)
+        if isinstance(loaded, dict):
+            return loaded
+        draft_items = loaded
+
+    added: list[ItemDraft] = []
     if ops:
-        for op in ops:
-            kind = str(op.get("op") or "")
-            index = op.get("index")
-            if kind == "set_amount" and isinstance(index, int) and 0 <= index < len(items):
-                updated = apply_amount(items[index], float(op.get("quantity") or 0), op.get("unit"))
-                if updated is None:
-                    return chat(req, memory, {"reason": "need a unit for that amount", "food": items[index].displayName})
-                items[index] = updated
-            elif kind == "remove" and isinstance(index, int) and 0 <= index < len(items):
-                del items[index]
-    memory.draftLog = items
-    return results_to_outcome(req, item_results_from_resolved(items), memory=memory, proposals=[])
+        draft_items, added, err = _apply_draft_ops(req, memory, draft_items, ops)
+        if err is not None:
+            return err
+
+    if items:
+        added.extend(ItemDraft.model_validate(raw) for raw in items)
+
+    resolved_prefix = item_results_from_resolved(draft_items) if draft_items else []
+    if not added and not resolved_prefix:
+        return chat(req, memory, {"reason": "the open log is empty"})
+
+    if not added:
+        memory.draftLog = draft_items
+        return results_to_outcome(
+            req,
+            resolved_prefix,
+            memory=memory,
+            proposals=proposals,
+            correction=correction,
+        )
+
+    deps, deadline = deps_deadline(req)
+    tail = resolve_many(
+        added,
+        search=deps["search"],
+        fetch_measures=deps["fetch_measures"],
+        clock=deps["clock"],
+        deadline=deadline,
+    )
+    return results_to_outcome(
+        req,
+        resolved_prefix + tail,
+        memory=memory,
+        proposals=proposals,
+        correction=correction,
+    )
 
 
 def repeat_prior_meal(req: InterpretMealRequest, entry_ids: list[str]) -> dict[str, Any]:
@@ -187,7 +203,7 @@ def repeat_prior_meal(req: InterpretMealRequest, entry_ids: list[str]) -> dict[s
     return results_to_outcome(req, item_results_from_resolved(items), memory=memory, proposals=[])
 
 
-def correct_entry(
+def edit_entry(
     req: InterpretMealRequest,
     *,
     entry_id: str,
@@ -253,35 +269,60 @@ def correct_entry(
     if op == "replace":
         if not item:
             return {"error": "bad_args", "message": "replace needs an item"}
-        return resolve_meal(
+        return new_entry(
             req,
-            [item],
+            items=[item],
             memory=memory,
             correction=(entry_id, item_index, "replace"),
         )
     return {"error": "bad_args", "message": f"unknown correction op {op}"}
 
 
-def fetch_menu(venue: str) -> dict[str, Any]:
-    """Menu item names only. Digits in the grounded text are removed."""
-    name = (venue or "").strip()
-    if os.environ.get("CAPY_MOCK_AGENT") == "1":
-        from agent.harness.deps import _overrides
-
-        scripted = _overrides.get("menu")
-        if isinstance(scripted, dict):
-            return scripted
-        return {"venue": name, "items": ""}
-    from agent.harness.web_search import web_search
-
-    raw = web_search(f"{name} menu items")
-    chunks: list[str] = []
-    for row in raw.get("results") or []:
-        if isinstance(row, dict) and row.get("summary"):
-            chunks.append(str(row["summary"]))
-    text = re.sub(r"\d+(?:\.\d+)?", " ", " ".join(chunks))
-    text = re.sub(r"\s+", " ", text).strip()
-    return {"venue": name, "items": text[:1500]}
+def delete_entry(
+    req: InterpretMealRequest,
+    *,
+    entry_id: str,
+    day_key: str | None = None,
+) -> dict[str, Any]:
+    """Stage removal of a whole diary entry for HITL confirm before delete_meal."""
+    memory = blank_memory(req)
+    eid = (entry_id or "").strip()
+    if not eid:
+        return {"error": "bad_args", "message": "delete_entry needs entryId"}
+    resolved_day = resolve_entry_day_key(req, eid, day_key)
+    if not resolved_day:
+        return chat(req, memory, {"reason": "that meal is not in the diary pack"})
+    rows = [row for row in diary_rows(req) if row.entryId == eid]
+    if not rows:
+        return chat(req, memory, {"reason": "that meal is not in the diary pack"})
+    names = [str(row.name or "").strip() for row in rows if row.name]
+    slot = next((row.mealSlot for row in rows if row.mealSlot), None)
+    if len(names) == 1:
+        label = names[0]
+    elif names:
+        label = ", ".join(names[:3])
+        if len(names) > 3:
+            label += ", …"
+    else:
+        label = "meal"
+    if slot:
+        label = f"{label} ({slot})"
+    pending_action = pending(
+        PendingActionType.confirm_delete,
+        PendingActionPayload(
+            entryId=eid,
+            dayKey=resolved_day,
+            reason=label,
+        ),
+    )
+    memory.draftLog = []
+    memory.resolveQueue = None
+    return base(
+        intent=MealIntent.correct_meal,
+        message_facts={"op": "delete_entry", "entryId": eid, "dayKey": resolved_day, "label": label},
+        memory=memory,
+        pending_action=pending_action,
+    )
 
 
 def _token_conflict(name: str, family: str, terms: list[str]) -> bool:
@@ -350,7 +391,6 @@ def compose_suggestions(
             item_drafts,
             search=deps["search"],
             fetch_measures=deps["fetch_measures"],
-            web=deps["web"],
             clock=deps["clock"],
             deadline=deadline,
         )
@@ -483,7 +523,6 @@ def run_calls(req: InterpretMealRequest, calls: list[dict[str, Any]]) -> dict[st
     ctx: dict[str, Any] = {"memory": memory, "proposals": []}
     primary: Optional[dict[str, Any]] = None
     suggestions: Optional[dict[str, Any]] = None
-    menu: Optional[dict[str, Any]] = None
     for call in calls:
         parsed = parse_tool_args(str(call.get("name") or ""), call.get("arguments") or {})
         if isinstance(parsed, str):
@@ -491,9 +530,6 @@ def run_calls(req: InterpretMealRequest, calls: list[dict[str, Any]]) -> dict[st
         tool, arguments = parsed
         result = tool.invoke({**arguments, "ctx": {**ctx, "req": req}})
         kind = (tool.metadata or {}).get("kind")
-        if kind == "lookup":
-            menu = result if isinstance(result, dict) else None
-            continue
         if kind == "memory":
             if isinstance(result, dict) and result.get("error"):
                 return result
@@ -534,6 +570,4 @@ def run_calls(req: InterpretMealRequest, calls: list[dict[str, Any]]) -> dict[st
         return suggestions
     if proposals:
         return chat(req, memory, {"memory": [p.model_dump(mode="json") for p in proposals]}, proposals=proposals)
-    if menu:
-        return chat(req, memory, {"venue": menu.get("venue"), "items": menu.get("items")})
     return chat(req, memory, {"reason": "no tool result"})

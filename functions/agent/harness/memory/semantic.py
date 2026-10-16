@@ -48,4 +48,5 @@ def semantic_block(req: InterpretMealRequest) -> dict[str, Any]:
             "dislikes": list(req.preferenceContext.dislikes or []),
         },
         "assistanceLevel": req.context.assistanceLevel,
+        "responseStyle": req.context.responseStyle,
     }

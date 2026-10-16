@@ -80,13 +80,20 @@ def test_search_food_seed_hit():
     assert any(r["foodId"] == "seed_paneer" for r in result["results"])
 
 
-def test_sanitize_strips_tech_and_ids():
-    dirty = "Vertex Gemini 404 usda_168878 https://example.com harness error (503)"
-    clean = sanitize_assistant_message(dirty)
-    assert "vertex" not in clean.lower()
-    assert "usda_" not in clean.lower()
-    assert "503" not in clean
-    assert "http" not in clean.lower()
+def test_sanitize_preserves_model_prose():
+    raw = "Vertex Gemini 404 usda_168878 https://example.com harness error (503)"
+    assert sanitize_assistant_message(raw) == raw
+
+
+def test_sanitize_empty_policy():
+    assert sanitize_assistant_message("", allow_empty=True) == ""
+    assert sanitize_assistant_message("   ", allow_empty=True) == ""
+    assert sanitize_assistant_message("", allow_empty=False) == GRACEFUL_FAILURE
+
+
+def test_sanitize_collapses_whitespace_only():
+    assert sanitize_assistant_message("hello   world") == "hello world"
+    assert sanitize_assistant_message("a\n\n\nb") == "a\n\nb"
 
 
 def test_fail_closed_message_has_no_stack():

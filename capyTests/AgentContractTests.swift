@@ -60,15 +60,12 @@ final class AgentContractTests: XCTestCase {
         )
         let entry = MealEntry(dayKey: "2026-10-13", mealSlot: "breakfast", items: [item])
         context.insert(entry)
-        let rows = ContextBuilder.diaryItems(from: entry)
-        XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].entryId, entry.uuid.uuidString)
-        XCTAssertEqual(rows[0].itemIndex, 0)
-        XCTAssertEqual(rows[0].foodId, "seed_egg")
-        XCTAssertEqual(rows[0].source, "catalog")
-        XCTAssertEqual(rows[0].per100g?.calories ?? 0, 155, accuracy: 0.01)
-
-        let match = [entry].first { $0.uuid.uuidString == rows[0].entryId }
-        XCTAssertEqual(match?.items[rows[0].itemIndex ?? -1].foodId, "seed_egg")
+        let payload = MealLogSyncBuilder.payload(for: entry, clientMutationId: "test-mutation")
+        XCTAssertNotNil(payload)
+        XCTAssertEqual(payload?.entryId, entry.uuid.uuidString)
+        XCTAssertEqual(payload?.items.count, 1)
+        XCTAssertEqual(payload?.items[0].foodId, "seed_egg")
+        XCTAssertEqual(payload?.items[0].source, "catalog")
+        XCTAssertEqual(payload?.items[0].per100g?.calories ?? 0, 155, accuracy: 0.01)
     }
 }

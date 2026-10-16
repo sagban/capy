@@ -1,6 +1,9 @@
 import SwiftUI
+import SwiftData
 
 struct MainTabView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection = 0
 
     var body: some View {
@@ -16,5 +19,17 @@ struct MainTabView: View {
             }
         }
         .tint(Color.capy.accent)
+        .task {
+            await UserSyncService.shared.start()
+            UserSyncService.shared.scheduleProfileSync(in: modelContext)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task {
+                    await UserSyncService.shared.flushPending()
+                    UserSyncService.shared.scheduleProfileSync(in: modelContext)
+                }
+            }
+        }
     }
 }

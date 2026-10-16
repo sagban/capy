@@ -18,7 +18,7 @@ Production path uses Vertex AI on the same project. Cloud Functions Application 
 2. Grant the Functions runtime service account **Vertex AI User** (`roles/aiplatform.user`)
    - Default compute SA: `PROJECT_NUMBER-compute@developer.gserviceaccount.com`
 3. Model: `gemini-2.5-flash` (override with env `VERTEX_GEMINI_MODEL`; dogfood has no 2.0-flash in us-central1)
-4. Enable Google Search grounding for the `web_search` tool (Vertex)
+4. Enable Google Search grounding on the main meal-agent model turn (Vertex `GoogleSearch` in `generate_with_tools`)
 
 Do **not** put an AI Studio `GEMINI_API_KEY` in the function for prod. Local emulator uses Vertex if ADC is available (`gcloud auth application-default login`). Unit tests set `CAPY_MOCK_AGENT=1` (no live Vertex). Live path **fails closed** if Vertex is unavailable — no keyword intent fallback.
 

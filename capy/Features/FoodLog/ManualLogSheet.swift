@@ -454,6 +454,7 @@ struct LogFoodDetailsView: View {
             ingredientFamily: draft.ingredientFamily
         )
 
+        let entry: MealEntry
         if let existingEntry {
             for old in existingEntry.items {
                 modelContext.delete(old)
@@ -462,18 +463,24 @@ struct LogFoodDetailsView: View {
             existingEntry.mealSlot = draft.mealSlot
             existingEntry.originalUserText = draft.name
             existingEntry.confirmed = true
+            item.entry = existingEntry
             existingEntry.items = [item]
+            entry = existingEntry
         } else {
-            modelContext.insert(
-                MealEntry(
-                    dayKey: DayKey.make(from: draft.day),
-                    mealSlot: draft.mealSlot,
-                    originalUserText: draft.name,
-                    confirmed: true,
-                    items: [item]
-                )
+            let newEntry = MealEntry(
+                dayKey: DayKey.make(from: draft.day),
+                mealSlot: draft.mealSlot,
+                originalUserText: draft.name,
+                confirmed: true,
+                items: []
             )
+            item.entry = newEntry
+            newEntry.items = [item]
+            modelContext.insert(newEntry)
+            entry = newEntry
         }
+        try? modelContext.save()
+        UserSyncService.shared.enqueueLogMeal(entry)
         onSaved()
     }
 

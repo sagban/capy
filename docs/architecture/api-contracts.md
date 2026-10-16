@@ -7,10 +7,70 @@ Base: Firebase Callable (or HTTPS function) on the active project.
 ## Auth
 
 ```http
-Authorization: Bearer <Firebase ID token>
+Authorization: Bearer <Firebase ID token | Cappy access token>
 ```
 
+- **iOS:** Firebase SDK callables (ID token attached automatically).
+- **HTTP / MCP / Alexa:** Callable HTTP with `Authorization: Bearer`, or mint a 1h access token via `exchange_access_token`.
+
+Full flow: [external-auth.md](external-auth.md). MCP tools: [mcp-tools.md](mcp-tools.md).
+
 Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phase 3+.
+
+### `exchange_access_token` (callable, unauthenticated)
+
+```json
+{ "firebaseIdToken": "<from Firebase Auth sign-in>" }
+```
+
+→ `{ "accessToken", "tokenType": "Bearer", "expiresIn": 3600, "uid" }`
+
+## Server user store
+
+Firestore layout and profile fields: [user-store.md](user-store.md).
+
+### `patch_profile` (callable)
+
+Authenticated merge into `users/{uid}`. Allowed keys: `timezone`, `dailyTarget`, `mealPlan`, `likes`, `dislikes`, `allergies`, `diets`, `assistanceLevel`, `responseStyle`, `longTermMemory`.
+
+### `log_meal` (callable)
+
+```json
+{
+  "dayKey": "2026-10-16",
+  "mealSlot": "Meal 2",
+  "entryId": "optional-uuid",
+  "clientMutationId": "optional-idempotency-key",
+  "confirmed": true,
+  "items": [
+    {
+      "name": "Egg",
+      "grams": 50,
+      "foodId": "seed_egg",
+      "source": "seed",
+      "per100g": { "calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11 }
+    }
+  ]
+}
+```
+
+Returns `{ "dayKey", "entryId" }`. Replays with the same `clientMutationId` return the original ids.
+
+### `delete_meal` (callable)
+
+```json
+{
+  "dayKey": "2026-10-16",
+  "entryId": "uuid",
+  "clientMutationId": "optional-idempotency-key"
+}
+```
+
+Soft-deletes `users/{uid}/days/{dayKey}/entries/{entryId}` (`deleted: true`, `confirmed: false`). Returns `{ "dayKey", "entryId" }`. Idempotent via `clientMutationId` like `log_meal`.
+
+### `interpretMeal` server context
+
+Set `"useServerContext": true` on the interpret request to build diary/profile/thread from Firestore instead of inline snapshots. iOS encodes only `utterance`, `timezone`, `dayKey`, optional `threadId`, and `useServerContext`. Conversation is stored at `users/{uid}/threads/{threadId}`; `interpret_meal` returns an updated `conversation` on success. Omit or `false` to keep the legacy client snapshot.
 
 ## `interpretMeal` (primary)
 
@@ -59,7 +119,7 @@ Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phas
       ]
     }
   },
-  "context": { "assistanceLevel": "fullAssist", "lastIntent": "clarify" },
+  "context": { "assistanceLevel": "fullAssist", "responseStyle": "balanced", "lastIntent": "clarify" },
   "memorySnapshot": {
     "preferences": ["high protein"],
     "dislikes": ["cilantro"],
@@ -77,7 +137,11 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `memorySnapshot` remains for #37 compatibility; clients should prefer `preferenceContext` + `diaryContext` + `longTermMemory` + `conversation`.
 
-`conversation.workingMemory` also carries `resolveQueue`, `lastSuggestionOptions`, and `draftLog`. The client stores the `workingMemory` object from the response and sends it back.
+`conversation.workingMemory` also carries `resolveQueue`, `lastSuggestionOptions`, and `draftLog`. With `useServerContext`, the server persists `workingMemory` on `users/{uid}/threads/{threadId}` and returns the updated `conversation` on `interpret_meal`.
+
+`context.responseStyle` (profile + interpret request): user-facing **Reply style** dial — `precise`, `balanced` (default), `creative`. Server maps to Gemini sampling (`precise` → 0.2, `balanced` → 0.5, `creative` → 0.8) and appends that style’s instruction block to the meal agent system prompt for the turn (not all three options). Invalid/missing values normalize to `balanced`.
+
+`context.assistanceLevel` (profile + interpret request): user-facing **Assistance** dial — `fullAssist` (default), `guided`, `quiet`. Server appends that level’s instruction block to the meal agent system prompt for the turn (not all three options). Invalid/missing values normalize to `fullAssist`.
 
 ### Response (success / HITL confirm)
 
@@ -121,9 +185,9 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `suggestionBudget` (optional, on suggest): `{calories, proteinG?, carbsG?, fatG?}` for that meal slot (explicit `budget` on the tool, else median for the slot when history allows, else plan-position weighted defaults, optionally scaled by `appetite`). Each field is a ceiling against remaining, not a target to fill.
 
-`pendingAction.type`: `clarify_portion` | `clarify_food` | `confirm_log` | `confirm_correction` | null
+`pendingAction.type`: `clarify_portion` | `clarify_food` | `confirm_log` | `confirm_correction` | `confirm_delete` | null
 
-`suggestionOptions` are stored for the next turn (`workingMemory.lastSuggestionOptions`). The Capy tab does not render them as cards. Totals are harness-computed. Logging one is a later `log_from_suggestion` tool call from chat, which opens the meal confirm sheet (`confirm_log`). `confirm_correction` also uses that sheet.
+`suggestionOptions` are stored for the next turn (`workingMemory.lastSuggestionOptions`). The Capy tab does not render them as cards. Totals are harness-computed. Logging one is a later `new_entry` call with `optionId` (and optional `ops`), which stages the meal for human-in-the-loop confirm (`confirm_log`). `confirm_correction` also uses that sheet.
 
 `confirm_log` payload `resolvedItems`: `{ foodId, displayName, grams, per100g, source, citationUrl?, portionLabel? }`. `source`: `catalog` | `usda` | `usda_branded` | `web` | `diary`. `web` is a cited per-100g density that passed the Atwater check; the web worker may convert a cited serving to per 100 g. Code multiplies grams.
 
@@ -131,7 +195,9 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `confirm_correction` payload: `entryId`, `itemIndex`, `correctionOp` `set_amount` | `replace` | `remove`, plus `resolvedItems` unless the op is `remove`.
 
-`assistantMessage` may be empty when the confirm sheet carries the turn. It never contains food ids, tool names, or HTTP details. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
+`confirm_delete` payload: `entryId`, `dayKey`, optional `reason` (label for the confirm sheet). Client confirms, then calls `delete_meal` to soft-delete in Firestore.
+
+`assistantMessage` may be empty when the confirm sheet carries the turn. It is model or harness-authored chat copy (plus optional factual supplements from tool outcomes); structured fields (`pendingAction`, `candidates`, `suggestionOptions`) are validated separately and are not regex-scrubbed in prose. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
 
 `memoryProposals.action`: `add` | `update` | `delete`. The client applies them. There is no `confirm_memory` pause.
 
@@ -167,16 +233,16 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 | Tool | Effect |
 |------|--------|
-| `resolve_meal` | Log items. Search, web nutrition, and portions run in code. |
-| `edit_draft` | Change the open confirm draft. |
-| `log_from_suggestion` | Copy a stored option into `confirm_log`. |
+| `new_entry` | Stage a new meal entry for HITL `confirm_log`: resolve `items`, edit with `ops`, or start from `optionId` (stored suggestion). Catalog/USDA search and portions run in code. |
 | `compose_suggestions` | Non-blocking chat suggestions. Optional `appetite` (`light` \| `normal` \| `hearty`) scales the guide; optional `budget` sets an explicit ceiling. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. |
 | `repeat_prior_meal` | Copy diary rows by `entryId`. |
-| `correct_entry` | `confirm_correction` for one `entryId` + `itemIndex`. |
-| `lookup_menu` | Menu names only. Same turn as any other tool; the graph does not call the model again. |
+| `edit_entry` | `confirm_correction` for one `entryId` + `itemIndex` (`set_amount` \| `replace` \| `remove`). |
+| `delete_entry` | `confirm_delete` for a whole `entryId` (optional `dayKey`). User confirms, then `delete_meal` writes Firestore. |
 | `save_memory` | `memoryProposals`. Can accompany any other tool. |
 
-Tools are LangChain `@tool` functions in `functions/agent/harness/tools/registry.py`. Executors live in `jobs.py`. Gemini sees those descriptions and JSON Schema. Request context is `InjectedToolArg`, not a model parameter. The system prompt in `functions/agent/llm/prompt.py` does not restate tool args.
+The meal model also has **Google Search grounding** on the same Vertex `generate_content` call (not a harness tool).
+
+Tools are LangChain `@tool` functions in `functions/agent/harness/tools/registry.py`. Executors live in `jobs.py`. Gemini sees those descriptions and JSON Schema (including when-to-use guidance and examples in each tool docstring). Request context is `InjectedToolArg`, not a model parameter. The system prompt in `functions/agent/llm/prompt.py` covers persona, context-pack grounding, trust boundaries, Google Search, orchestration, assistance level, and global food rules — not per-tool parameter playbooks.
 
 `search_food`, web nutrition, and `scale_portion` are internal. `scale_portion` requires grams. There is no same-day miss cache. `calc_macros` stays in Swift.
 

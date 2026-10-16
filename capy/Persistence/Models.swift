@@ -1,6 +1,31 @@
 import Foundation
 import SwiftData
 
+/// How Capy phrases replies (server maps to model sampling; not shown as temperature in UI).
+enum ResponseStyle: String, Codable, CaseIterable, Identifiable {
+    case precise
+    case balanced
+    case creative
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .precise: "Precise"
+        case .balanced: "Balanced"
+        case .creative: "Creative"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .precise: "Sticks to facts and steady estimates"
+        case .balanced: "Natural replies with room to rephrase"
+        case .creative: "More flexible wording and ideas"
+        }
+    }
+}
+
 enum AssistanceLevel: String, Codable, CaseIterable, Identifiable {
     case fullAssist
     case guided
@@ -29,6 +54,7 @@ enum AssistanceLevel: String, Codable, CaseIterable, Identifiable {
 final class AppSettings {
     var onboardingCompleted: Bool
     var assistanceLevelRaw: String
+    var responseStyleRaw: String = ResponseStyle.balanced.rawValue
     var guidedCheckInHour: Int
     var guidedCheckInMinute: Int
     var energyUnitRaw: String = EnergyUnit.kcal.rawValue
@@ -39,6 +65,11 @@ final class AppSettings {
     var assistanceLevel: AssistanceLevel {
         get { AssistanceLevel(rawValue: assistanceLevelRaw) ?? .guided }
         set { assistanceLevelRaw = newValue.rawValue }
+    }
+
+    var responseStyle: ResponseStyle {
+        get { ResponseStyle(rawValue: responseStyleRaw) ?? .balanced }
+        set { responseStyleRaw = newValue.rawValue }
     }
 
     var energyUnit: EnergyUnit {
@@ -73,6 +104,7 @@ final class AppSettings {
     init(
         onboardingCompleted: Bool = false,
         assistanceLevel: AssistanceLevel = .fullAssist,
+        responseStyle: ResponseStyle = .balanced,
         guidedCheckInHour: Int = 18,
         guidedCheckInMinute: Int = 0,
         energyUnit: EnergyUnit = .kcal,
@@ -82,6 +114,7 @@ final class AppSettings {
     ) {
         self.onboardingCompleted = onboardingCompleted
         self.assistanceLevelRaw = assistanceLevel.rawValue
+        self.responseStyleRaw = responseStyle.rawValue
         self.guidedCheckInHour = guidedCheckInHour
         self.guidedCheckInMinute = guidedCheckInMinute
         self.energyUnitRaw = energyUnit.rawValue
@@ -290,6 +323,17 @@ final class MealEntryItem {
         self.foodId = foodId
         self.ingredientFamily = ingredientFamily
         self.source = source
+    }
+
+    /// Per-100g macros derived from logged totals and grams.
+    var per100gMacros: MacroTotals? {
+        guard grams > 0 else { return nil }
+        return MacroTotals(
+            calories: calories / grams * 100,
+            proteinG: proteinG / grams * 100,
+            carbsG: carbsG / grams * 100,
+            fatG: fatG / grams * 100
+        )
     }
 }
 

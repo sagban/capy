@@ -1,10 +1,9 @@
-"""Injectable search, web nutrition, and clock for the resolve pipeline."""
+"""Injectable search, USDA measures, and clock for the resolve pipeline."""
 
 from __future__ import annotations
 
-import os
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from schemas import InterpretMealRequest
 
@@ -35,22 +34,12 @@ def _default_fetch(food_id: str) -> list[Any]:
     return fetch_fdc_measures(food_id)
 
 
-def _default_web(query: str) -> Optional[dict[str, Any]]:
-    if os.environ.get("CAPY_MOCK_AGENT") == "1" and "web" not in _overrides:
-        return None
-    from agent.harness.web_nutrition import lookup_web_nutrition
-
-    return lookup_web_nutrition(query)
-
-
 def resolve_deps(req: InterpretMealRequest) -> dict[str, Any]:
     search = _overrides.get("search") or _default_search(req)
     fetch = _overrides.get("fetch_measures") or _default_fetch
-    web = _overrides.get("web") or _default_web
     clock = _overrides.get("clock") or time.monotonic
     return {
         "search": search,
         "fetch_measures": fetch,
-        "web": web,
         "clock": clock,
     }

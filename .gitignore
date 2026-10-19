@@ -17,7 +17,6 @@ Config/LocalEmulatorHost.xcconfig
 __pycache__/
 .venv/
 venv/
-
 # Backlog seed artifacts
 scripts/.backlog_issue_map.tsv
 

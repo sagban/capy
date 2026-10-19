@@ -21,7 +21,6 @@ from agent.turn import (
 
 
 class GraphState(TypedDict, total=False):
-    request: dict[str, Any]
     req: dict[str, Any]
     context_pack: str
     calls: list[dict[str, Any]]
@@ -32,7 +31,7 @@ class GraphState(TypedDict, total=False):
 
 def prepare_node(state: GraphState) -> GraphState:
     with phoenix_tracing.chain_span("prepare") as span:
-        out = prepare(state["request"])
+        out = prepare(state["req"])
         phoenix_tracing.set_output(
             span,
             {"threadId": ((out.get("req") or {}).get("conversation") or {}).get("threadId")},
@@ -121,7 +120,7 @@ def run_interpret(payload: dict[str, Any], *, uid: str = "test", thread_id: str 
     req = request_from_dict(payload)
     tid = thread_id or conversation_thread_id(req)
     config = {"configurable": {"thread_id": f"{uid}:{tid}"}}
-    final = get_graph().invoke({"request": payload}, config)
+    final = get_graph().invoke({"req": req.model_dump(mode="json")}, config)
     response = final.get("response")
     if isinstance(response, dict) and response.get("intent"):
         return response

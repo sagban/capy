@@ -5,6 +5,16 @@ service cloud.firestore {
     match /agentGraphCheckpoints/{document=**} {
       allow read, write: if false;
     }
+    // Shared food corpus (USDA FDC write-through; seed import later) — server only.
+    match /foodCorpus/{document=**} {
+      allow read, write: if false;
+    }
+    match /fdcSearchSlices/{document=**} {
+      allow read, write: if false;
+    }
+    match /recipes/{document=**} {
+      allow read, write: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

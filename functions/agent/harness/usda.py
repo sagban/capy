@@ -7,6 +7,12 @@ from typing import Any, Optional
 
 import httpx
 
+from agent.harness.food_corpus_store import (
+    corpus_store_enabled,
+    get_search_slice,
+    put_search_slice,
+    slice_key_for_data_types,
+)
 from schemas import FoodHit, HouseholdMeasure, MacroTotals
 
 FDC_SEARCH = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -38,7 +44,7 @@ def _api_key(explicit: Optional[str]) -> str:
     )
 
 
-def _fdc_search(
+def _fdc_search_live(
     query: str,
     *,
     data_types: list[str],
@@ -58,6 +64,30 @@ def _fdc_search(
     except Exception:
         return []
     return list(data.get("foods") or [])
+
+
+def _fdc_search(
+    query: str,
+    *,
+    data_types: list[str],
+    page_size: int,
+    api_key: str,
+) -> list[dict[str, Any]]:
+    slice_key = slice_key_for_data_types(data_types)
+    if corpus_store_enabled():
+        cached = get_search_slice(query, slice_key, page_size)
+        if cached is not None:
+            return cached
+
+    foods = _fdc_search_live(
+        query,
+        data_types=data_types,
+        page_size=page_size,
+        api_key=api_key,
+    )
+    if corpus_store_enabled():
+        put_search_slice(query, slice_key, page_size, foods)
+    return foods
 
 
 def _measures_from_food(food: dict[str, Any]) -> list[HouseholdMeasure]:

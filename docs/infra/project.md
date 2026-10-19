@@ -14,6 +14,8 @@
 
 `.firebaserc` points `default` → `capy-dogfood`.
 
+Firestore database ID is **`capy`** (not `(default)`). Functions and import scripts use `get_db()` with `FIRESTORE_DATABASE_ID` defaulting to `capy`.
+
 `GoogleService-Info.plist` is downloaded under `capy/` and **gitignored**. Regenerate with:
 
 ```bash

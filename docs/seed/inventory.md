@@ -29,6 +29,17 @@ Raw USDA zips live under `scripts/data/usda/` (gitignored). Re-run the script wh
 
 Functions `search_food` still calls the USDA API when the bundled catalog misses (branded / obscure items).
 
+## Firestore corpus (optional upload)
+
+After building JSON, upload the same catalog to `foodCorpus` (server-side; does not replace bundled JSON for Functions/iOS until `catalog.py` reads Firestore):
+
+```bash
+python3 scripts/import_seed_food_corpus.py --project capy-dogfood --dry-run
+python3 scripts/import_seed_food_corpus.py --project capy-dogfood
+```
+
+Requires ADC (`gcloud auth application-default login`). Skips when file hash matches `foodCorpus/_meta/catalog/current` unless `--force`.
+
 ## Overlay foods
 
 Keep only items USDA covers poorly (regional staples). Composites may `resolve:<exact USDA description>` so the build script binds stable `usda_*` ids.

@@ -7,6 +7,8 @@
       "family": "dairy",
       "per100g": { "calories": 265, "proteinG": 18, "carbsG": 1.2, "fatG": 20 },
       "aliases": ["paneer", "indian cottage cheese"],
+      "servingGrams": 50,
+      "servingLabel": "1 piece (approx)",
       "source": "overlay"
     },
     {
@@ -15,6 +17,8 @@
       "family": "grain",
       "per100g": { "calories": 297, "proteinG": 9, "carbsG": 46, "fatG": 7.5 },
       "aliases": ["roti", "chapati", "chapatti"],
+      "servingGrams": 40,
+      "servingLabel": "1 roti",
       "source": "overlay"
     },
     {
@@ -23,6 +27,8 @@
       "family": "legume",
       "per100g": { "calories": 116, "proteinG": 9, "carbsG": 20, "fatG": 0.4 },
       "aliases": ["dal", "daal", "lentils"],
+      "servingGrams": 180,
+      "servingLabel": "1 bowl",
       "source": "overlay"
     },
     {
@@ -31,6 +37,8 @@
       "family": "supplement",
       "per100g": { "calories": 400, "proteinG": 80, "carbsG": 10, "fatG": 3 },
       "aliases": ["protein powder", "whey"],
+      "servingGrams": 30,
+      "servingLabel": "1 scoop",
       "source": "overlay"
     }
   ],

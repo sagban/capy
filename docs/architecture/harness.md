@@ -2,7 +2,7 @@
 
 Hosted on **Python Firebase Functions (2nd gen)**. Meal chat is one Vertex Gemini turn with typed tools, then deterministic execution. USDA key lives in Secret Manager (`USDA_FDC_API_KEY`). There is no skill router, no chip/action dispatch, and no phrase list.
 
-**Agent = LLM + harness.** The user types every follow-up. Suggestions are display-only until they ask to log in chat (`new_entry` with `optionId`). Manual Log in the iOS Food Log tab is the non-AI escape hatch. The meal model has Google Search grounding on its Vertex turn; harness tools do not call the web.
+**Agent = LLM + harness.** The user types every follow-up. Suggestions are display-only until they ask to log in chat (`new_entry` with `optionId`). Manual Log in the iOS Food Log tab is the non-AI escape hatch. The meal model has Google Search grounding on its Vertex turn (Gemini 3+); harness tools do not call the web.
 
 The system prompt lives in [`functions/agent/llm/prompt.py`](../../functions/agent/llm/prompt.py). Tool descriptions live on the `@tool` functions in [`functions/agent/harness/tools/registry.py`](../../functions/agent/harness/tools/registry.py). Offline unit tests use `CAPY_MOCK_AGENT=1`.
 

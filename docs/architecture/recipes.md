@@ -29,8 +29,17 @@ Multi-ingredient dishes are stored outside `foodCorpus`.
 - `scripts/migrate_composites_to_recipes.py` — one-off: copy existing `foodCorpus` `dataType==composite` → `recipes` (leaves old corpus rows for rollback).
 - `scripts/import_seed_food_corpus.py` — writes foods/templates to `foodCorpus` and composites to `recipes`.
 
-## Follow-up (not done here)
+## iOS Library recipes & meals (local)
+
+- **Recipes** — compose from catalog foods only (grams); macros summed from per-100g snapshots on `LibraryItem.ingredientsJSON`.
+- **Meals** — same composer, but items may be catalog foods **or** library recipes / foods / other meals (counted in servings, macros snapped at add time).
+- **Foods** — simple name + manual macros (no composition).
+- Logging a library recipe or meal still logs **one serving** (summed macros) via Manual Log.
+- Firestore sync of **user** recipes/meals is not wired yet.
+
+## Follow-up
 
 - `catalog.search_seed`: optionally search `recipes` by name (separate from staple foods).
-- iOS: `LibraryEditorSheet` ingredient list; `SeedImporter` stop rolling composite macros into a single `Food` per 100g.
+- `SeedImporter`: stop rolling seed composites into a single `Food` per 100g when clients read `recipes` only.
 - Delete legacy composite docs from `foodCorpus` after clients read `recipes`.
+- Sync user library recipes to Firestore `recipes/{id}`.

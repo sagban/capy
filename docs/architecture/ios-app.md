@@ -20,34 +20,44 @@ Auth → Onboarding (first run) → Main TabView
 
 Settings is **not** a tab. Use `NavigationStack` per tab; gear in `.toolbar` trailing.
 
+**Capy confirm → Food Log:** confirming a `confirm_log` with multiple foods creates **one diary row (`MealEntry`) per food**, each with a single item — not one multi-item meal card. Reply copy may still say “logged A and B”. Correction/delete paths still target one existing entry/item. Manual Log multi-ingredient plates are unchanged.
+
 ## Folder layout (target)
 
 ```text
 capy/
   App/                 # CapyApp, AppContainer, root routing
-  Core/                # Pure macros, remaining, variety, verifier (no SwiftUI/network)
-  Persistence/         # SwiftData models, repositories, seed import
+  Core/                # Pure helpers (MacroMath, seed import, stores, verifier)
+    Enums/             # Domain + wire enums (one type per file)
+    Entity/            # Value structs (`MacroTotals`, `LibraryIngredientLine`, …)
+    DTO/               # Codable request/response / queue payloads
+    UIComponents/      # Shared SwiftUI rows/badges (`FoodPickRow`, `FoodMacroBadgeRow`)
+  Persistence/         # SwiftData `@Model` types only (one type per file)
   Features/
     Auth/
     Onboarding/
     Capy/              # Agentic screen
     FoodLog/
-    Library/
+    Library/           # Sheets/views (editor, picker, portion)
     Settings/
-  AgentClient/         # Callable HTTP + Codable DTOs
-  DesignSystem/        # App Color Palette wrappers, materials helpers
+  AgentClient/         # Callable HTTP clients + sync services
   Resources/           # SeedFoods.json, GoldenCases.json
 ```
+
+Colors/materials live under `Core/` (`CapyColors`, `CapyChrome`). Enums → `Core/Enums/`, struct entities → `Core/Entity/`, Codable DTOs → `Core/DTO/`. `Persistence/` is SwiftData `@Model` types only.
 
 ## Responsibilities
 
 | Module | Owns |
 |--------|------|
-| `Core` | Pure functions; unit-tested; no API keys |
-| `Persistence` | SwiftData schema, queries, macro snapshots on log items |
-| `AgentClient` | Auth token attach, decode structured responses; never trusts macros |
+| `Core` | Pure helpers, seed import, stores; unit-tested; no API keys |
+| `Core/Enums` | Shared enums (one type per file) |
+| `Core/Entity` | Value structs / snapshots (one type per file) |
+| `Core/DTO` | Codable wire + queue payloads |
+| `Persistence` | SwiftData `@Model` schema only |
+| `AgentClient` | Auth token attach, HTTP clients, sync; never trusts macros |
 | `Features/*` | SwiftUI screens; uses palette + system materials |
-| `DesignSystem` | `Color.capy.*` tokens, glass/material helpers |
+| `Core/UIComponents` | Shared SwiftUI rows/badges |
 
 ## Concurrency / DI
 

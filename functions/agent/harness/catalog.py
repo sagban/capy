@@ -219,21 +219,40 @@ def _query_matches(q: str, name: str, aliases: list[str], family: str) -> bool:
     return q in n or any(q in a for a in alias_list) or q in fam
 
 
-def search_seed(query: str, limit: int = 10) -> list[FoodHit]:
+def _seed_query_variants(query: str) -> list[str]:
+    """Logging phrases → USDA/seed naming (kept local to avoid food_search import cycle)."""
     q = query.strip().lower()
     if not q:
+        return []
+    out = [q]
+    alt = re.sub(r"\bwhole\s+eggs?\b", "egg, whole", q)
+    if alt != q:
+        out.append(alt)
+    return out
+
+
+def search_seed(query: str, limit: int = 10) -> list[FoodHit]:
+    raw = query.strip()
+    if not raw:
         return all_food_hits()[:limit]
+    variants = _seed_query_variants(raw)
     seed = load_seed()
     alias_map: dict[str, list[str]] = {
         f["id"]: [a.lower() for a in f.get("aliases", [])] for f in seed.get("foods", [])
     }
     scored: list[tuple[tuple, FoodHit]] = []
+    seen: set[str] = set()
     for hit in all_food_hits():
         name = hit.displayName
         aliases = alias_map.get(hit.foodId, [])
-        if _query_matches(q, name, aliases, hit.family):
-            key = _rank_key(name, aliases, hit.family, hit.foodId, q)
-            scored.append((key, hit))
+        matched_q = next((vq for vq in variants if _query_matches(vq, name, aliases, hit.family)), None)
+        if matched_q is None:
+            continue
+        if hit.foodId in seen:
+            continue
+        seen.add(hit.foodId)
+        key = _rank_key(name, aliases, hit.family, hit.foodId, matched_q)
+        scored.append((key, hit))
     scored.sort(key=lambda x: x[0])
     return [h for _, h in scored[:limit]]
 

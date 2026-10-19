@@ -1,31 +1,5 @@
 import Foundation
 
-// MARK: - Shared enums (api-contracts)
-
-enum MealIntent: String, Codable, Equatable, Sendable {
-    case logMeal = "log_meal"
-    case suggestMeal = "suggest_meal"
-    case correctMeal = "correct_meal"
-    case clarify
-    case updatePreference = "update_preference"
-    case updateMemory = "update_memory"
-    case unknown
-}
-
-enum PendingActionType: String, Codable, Equatable, Sendable {
-    case clarifyPortion = "clarify_portion"
-    case clarifyFood = "clarify_food"
-    case confirmLog = "confirm_log"
-    case confirmCorrection = "confirm_correction"
-    case confirmDelete = "confirm_delete"
-}
-
-enum MemoryProposalAction: String, Codable, Equatable, Sendable {
-    case add
-    case update
-    case delete
-}
-
 // MARK: - Request DTO
 
 struct InterpretMealRequestDTO: Codable, Equatable, Sendable {

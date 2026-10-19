@@ -40,5 +40,39 @@ final class SeedImporterTests: XCTestCase {
             FetchDescriptor<Food>(predicate: #Predicate { $0.id == "seed_paneer" })
         ).first
         XCTAssertEqual(paneer?.ingredientFamily, "dairy")
+        XCTAssertEqual(paneer!.servingGrams, 50, accuracy: 0.1)
+
+        let eggWhite = try context.fetch(
+            FetchDescriptor<Food>(predicate: #Predicate { $0.id == "usda_747997" })
+        ).first
+        XCTAssertNotNil(eggWhite)
+        XCTAssertGreaterThan(eggWhite!.servingGrams, 0)
+        XCTAssertLessThan(eggWhite!.servingGrams, 50)
+
+        let olive = try context.fetch(
+            FetchDescriptor<Food>(predicate: #Predicate { $0.id == "usda_171413" })
+        ).first
+        XCTAssertNotNil(olive)
+        XCTAssertEqual(olive!.servingGrams, 13.5, accuracy: 0.5)
+    }
+
+    func testSearchFoodsEmptyQueryReturnsNothing() throws {
+        let schema = Schema([Food.self, MealTemplate.self, MealTemplateItem.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        context.insert(
+            Food(
+                id: "t1",
+                canonicalName: "Apple",
+                per100g: MacroTotals(calories: 52, proteinG: 0, carbsG: 14, fatG: 0),
+                ingredientFamily: "fruit"
+            )
+        )
+        try context.save()
+        XCTAssertTrue(SeedImporter.searchFoods(query: "", in: context).isEmpty)
+        XCTAssertFalse(SeedImporter.searchFoods(query: "app", in: context).isEmpty)
     }
 }

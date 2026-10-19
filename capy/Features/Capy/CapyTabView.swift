@@ -570,23 +570,30 @@ struct CapyTabView: View {
     }
 
     private func confirmLines(from items: [ResolvedItemDTO]) -> [ConfirmLine] {
-        items.enumerated().compactMap { index, item in
-            guard item.grams > 0 else { return nil }
-            return ConfirmLine(
-                id: "\(index)-\(item.foodId)",
-                name: item.displayName,
-                foodId: item.foodId,
-                grams: item.grams,
-                per100g: item.per100g,
-                source: item.source,
-                citationUrl: item.citationUrl,
-                portionLabel: item.portionLabel,
-                family: item.family ?? "",
-                entryId: item.entryId,
-                itemIndex: item.itemIndex,
-                priorGrams: nil
+        var seen = Set<String>()
+        var lines: [ConfirmLine] = []
+        for (index, item) in items.enumerated() {
+            guard item.grams > 0 else { continue }
+            let key = "\(item.foodId)|\(item.grams)"
+            guard seen.insert(key).inserted else { continue }
+            lines.append(
+                ConfirmLine(
+                    id: "\(index)-\(item.foodId)",
+                    name: item.displayName,
+                    foodId: item.foodId,
+                    grams: item.grams,
+                    per100g: item.per100g,
+                    source: item.source,
+                    citationUrl: item.citationUrl,
+                    portionLabel: item.portionLabel,
+                    family: item.family ?? "",
+                    entryId: item.entryId,
+                    itemIndex: item.itemIndex,
+                    priorGrams: nil
+                )
             )
         }
+        return lines
     }
 
     private func correctionLines(from pending: PendingActionDTO) -> [ConfirmLine] {
@@ -671,9 +678,13 @@ struct CapyTabView: View {
             return
         }
 
-        let items = pendingLines.map { line in
+        // One Food Log row per food (not one meal card with many lines).
+        let slot = pendingMealSlot.isEmpty ? nil : pendingMealSlot
+        var added = MacroTotals.zero
+        var names: [String] = []
+        for line in pendingLines {
             let macros = line.macros
-            return MealEntryItem(
+            let item = MealEntryItem(
                 name: line.name,
                 grams: line.grams,
                 calories: macros.calories,
@@ -684,34 +695,25 @@ struct CapyTabView: View {
                 ingredientFamily: line.family,
                 source: line.source
             )
-        }
-        guard !items.isEmpty else { return }
-        let entry = MealEntry(
-            dayKey: todayKey,
-            mealSlot: pendingMealSlot.isEmpty ? nil : pendingMealSlot,
-            originalUserText: items.map(\.name).joined(separator: ", "),
-            confirmed: true,
-            items: []
-        )
-        modelContext.insert(entry)
-        for item in items {
+            let entry = MealEntry(
+                dayKey: todayKey,
+                mealSlot: slot,
+                originalUserText: readableFoodName(line.name),
+                confirmed: true,
+                items: []
+            )
+            modelContext.insert(entry)
             item.entry = entry
             entry.items.append(item)
+            syncMealEntryToServer(entry)
+            added = added + macros
+            names.append(readableFoodName(line.name))
         }
-        syncMealEntryToServer(entry)
-        let added = items.reduce(MacroTotals.zero) { partial, item in
-            partial + MacroTotals(
-                calories: item.calories,
-                proteinG: item.proteinG,
-                carbsG: item.carbsG,
-                fatG: item.fatG
-            )
-        }
+        guard !names.isEmpty else { return }
         let left = MacroTotals.remaining(
             target: target,
             eaten: eaten + added
         )
-        let names = items.map { readableFoodName($0.name) }
         let listed: String
         if names.count <= 1 {
             listed = names.first ?? "that"

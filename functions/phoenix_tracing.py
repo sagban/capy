@@ -41,6 +41,11 @@ def setup() -> bool:
 
     if _truthy("CAPY_MOCK_AGENT"):
         return False
+    # Explicit off wins (even if PHOENIX_COLLECTOR_ENDPOINT is still in the env).
+    # Needed on macOS: Phoenix/Arrow curl_global_init SIGSEGVs in gunicorn fork children.
+    _phoenix = (os.environ.get("CAPY_PHOENIX") or "").strip().lower()
+    if _phoenix in ("0", "false", "no", "off"):
+        return False
     if not _truthy("CAPY_PHOENIX") and not (os.environ.get("PHOENIX_COLLECTOR_ENDPOINT") or "").strip():
         return False
 

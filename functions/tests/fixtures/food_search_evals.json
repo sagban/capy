@@ -39,6 +39,19 @@
       "expect_top_id": "seed_egg"
     },
     {
+      "id": "staple_whole_egg_not_croissant",
+      "query": "whole egg",
+      "expect_breadth": "broad",
+      "pool": [
+        {"foodId": "seed_egg_whole", "displayName": "Egg, whole, raw, fresh", "source": "seed", "family": "egg"},
+        {"foodId": "usda_croissant_egg", "displayName": "Croissant Sandwich With Scrambled Egg & Bacon", "source": "usda_branded", "family": ""}
+      ],
+      "expect_top_id": "seed_egg_whole",
+      "expect_not_top_substr": ["croissant", "sandwich"],
+      "expect_confidence": ["high", "medium"],
+      "expect_suggest_web": false
+    },
+    {
       "id": "staple_banana",
       "query": "banana",
       "pool": [

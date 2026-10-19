@@ -41,6 +41,8 @@ _STOP = {
     "ones",
 }
 _FORM = {"raw", "cooked", "dry", "dried", "fresh", "frozen", "whole", "plain"}
+# Keep "whole" as a content token when paired with these staples (USDA "Egg, whole, …").
+_WHOLE_STAPLES = frozenset({"egg", "eggs", "milk", "wheat", "grain", "kernel"})
 _NOISE = (
     "babyfood",
     "infant",
@@ -51,6 +53,22 @@ _NOISE = (
     "snacks,",
     " chips",
     "chip,",
+)
+# Meal/composite cues — penalize on broad staple queries when the user did not ask for them.
+_COMPOSITE = (
+    "sandwich",
+    "croissant",
+    "sausage",
+    "burrito",
+    "pizza",
+    "muffin",
+    "cookie",
+    "nugget",
+    "omelet",
+    "omelette",
+    "quiche",
+    "wrap",
+    "biscuit",
 )
 _CHAINS = (
     "mcdonald",
@@ -80,8 +98,49 @@ def _tokens(text: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9%]+", text.lower()) if t]
 
 
+def canonical_staple_query(query: str) -> str:
+    """Map common logging phrases to USDA/seed naming (whole egg → egg, whole)."""
+    q = (query or "").strip().lower()
+    q = re.sub(r"\bwhole\s+eggs?\b", "egg, whole", q)
+    q = re.sub(r"\beggs?,\s*whole\b", "egg, whole", q)
+    return q
+
+
+def staple_query_variants(query: str) -> list[str]:
+    """Distinct query strings to retrieve seed/USDA pools for staples."""
+    raw = (query or "").strip()
+    if not raw:
+        return []
+    seen: list[str] = []
+    for candidate in (raw, canonical_staple_query(raw)):
+        c = candidate.strip()
+        if c and c.lower() not in {s.lower() for s in seen}:
+            seen.append(c)
+    return seen
+
+
 def content_tokens(query: str) -> list[str]:
-    return [t for t in _tokens(query) if t not in _STOP and t not in _FORM and len(t) > 1]
+    toks = _tokens(query)
+    keep_whole = "whole" in toks and any(t in _WHOLE_STAPLES for t in toks)
+    out: list[str] = []
+    for t in toks:
+        if t in _STOP or len(t) <= 1:
+            continue
+        if t in _FORM and not (t == "whole" and keep_whole):
+            continue
+        if t not in out:
+            out.append(t)
+    # Canonical form also contributes egg+whole coverage for "Egg, whole, …" names.
+    canon = canonical_staple_query(query)
+    if canon != query.lower().strip():
+        for t in _tokens(canon):
+            if t in _STOP or len(t) <= 1:
+                continue
+            if t in _FORM and not (t == "whole" and keep_whole):
+                continue
+            if t not in out:
+                out.append(t)
+    return out
 
 
 def identity_tokens(query: str) -> list[str]:
@@ -186,18 +245,25 @@ def _coverage(tokens: list[str], text: str) -> float:
 
 def _exactness(name: str, query: str) -> float:
     n = name.lower().strip()
-    q = query.lower().strip()
-    if not q:
-        return 0.0
-    if n == q:
-        return 1.0
-    if n.startswith(q + ",") or n.startswith(q + " "):
-        return 0.9
-    if n.startswith(q):
-        return 0.75
-    if re.search(rf"(^|[\s,/(-]){re.escape(q)}($|[\s,)/])", n):
-        return 0.7
-    return 0.0
+    variants = [query.lower().strip(), canonical_staple_query(query)]
+    best = 0.0
+    for q in variants:
+        if not q:
+            continue
+        if n == q:
+            best = max(best, 1.0)
+            continue
+        if n.startswith(q + ",") or n.startswith(q + " "):
+            best = max(best, 0.9)
+            continue
+        if n.startswith(q):
+            best = max(best, 0.75)
+            continue
+        # Contiguous phrase in the middle — weak when the title is a multi-ingredient meal.
+        if re.search(rf"(^|[\s,/(-]){re.escape(q)}($|[\s,)/&])", n):
+            composite_bits = n.count(",") + n.count("&")
+            best = max(best, 0.35 if composite_bits >= 2 else 0.7)
+    return best
 
 
 def _personal_score(hit: FoodHit, req: InterpretMealRequest) -> float:
@@ -246,7 +312,7 @@ def _personal_score(hit: FoodHit, req: InterpretMealRequest) -> float:
     return score
 
 
-def _item_quality(hit: FoodHit, breadth: QueryBreadth) -> float:
+def _item_quality(hit: FoodHit, breadth: QueryBreadth, *, personal: float = 0.0) -> float:
     """Document/item features: trust + completeness; seed bias only for broad queries."""
     q = 0.0
     per = hit.per100g
@@ -256,6 +322,12 @@ def _item_quality(hit: FoodHit, breadth: QueryBreadth) -> float:
         q += 2.0
     if breadth == "broad" and hit.source == "seed":
         q += 6.0
+    if breadth == "broad" and hit.source == "usda":
+        q += 4.0
+    if breadth == "broad" and hit.source == "usda_branded":
+        # Diary/likes already chose this brand — don't fight personal score.
+        if personal <= 0:
+            q -= 8.0
     if breadth == "narrow" and hit.source == "usda_branded":
         q += 4.0
     if breadth == "narrow" and hit.source == "seed":
@@ -269,8 +341,17 @@ def _penalties(name: str, query: str, unexplained: list[str], breadth: QueryBrea
     if any(t in n for t in _NOISE):
         p += 22.0
     q = query.lower()
-    if any(t in n for t in _CHAINS) and not any(t in q for t in _CHAINS):
+    chain_asked = any(t in q for t in _CHAINS)
+    if any(t in n for t in _CHAINS) and not chain_asked:
         p += 12.0
+    # Composite meals on staple queries (whole egg → croissant sandwich).
+    # Skip when the user named a chain (mcdonalds chicken sandwich is expected).
+    if (
+        not chain_asked
+        and any(cue in n for cue in _COMPOSITE)
+        and not any(cue in q for cue in _COMPOSITE)
+    ):
+        p += 20.0 if breadth == "broad" else 12.0
     # Unexplained identity/content tokens — wrong product risk.
     weight = 14.0 if breadth == "narrow" else 8.0
     p += weight * len(unexplained)
@@ -315,7 +396,7 @@ def score_hit(
     )
 
     personal = _personal_score(hit, req)
-    quality = _item_quality(hit, breadth)
+    quality = _item_quality(hit, breadth, personal=personal)
     unexplained = _unexplained(desc, brand, content, identity)
     penalties = _penalties(hit.displayName, query, unexplained, breadth)
 
@@ -419,8 +500,12 @@ def search_foods(req: InterpretMealRequest, query: str, limit: int = 8) -> dict[
         }
 
     breadth = query_breadth(q)
-    seed_hits = search_seed(q, limit=max(12, limit))
-    usda_hits = search_usda_pool(q, limit=max(30, limit * 4))
+    variants = staple_query_variants(q)
+    seed_hits: list[FoodHit] = []
+    usda_hits: list[FoodHit] = []
+    for variant in variants:
+        seed_hits.extend(search_seed(variant, limit=max(12, limit)))
+        usda_hits.extend(search_usda_pool(variant, limit=max(30, limit * 4)))
 
     merged: dict[str, FoodHit] = {}
     for h in seed_hits + usda_hits:

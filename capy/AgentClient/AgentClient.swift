@@ -91,7 +91,8 @@ actor AgentClient {
         let token = try await user.getIDToken()
         var request = URLRequest(url: EnvironmentConfig.callableURL(named: name))
         request.httpMethod = "POST"
-        request.timeoutInterval = 60
+        // Match prod interpret_meal (120s); cold Gemini + tools often exceeds 60s locally.
+        request.timeoutInterval = 120
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["data": payload])

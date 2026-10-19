@@ -13,9 +13,10 @@ from agent.llm.response_style import temperature_for_response_style
 logger = logging.getLogger("capy.vertex")
 
 DEFAULT_PROJECT = "capy-dogfood"
-DEFAULT_LOCATION = "us-central1"
-# dogfood project currently exposes 2.5-flash in us-central1 (2.0-flash → 404).
-DEFAULT_MODEL = "gemini-2.5-flash"
+# Gemini 3 publisher models are served from the Vertex `global` endpoint.
+DEFAULT_LOCATION = "global"
+# 3.x allows google_search + function_declarations on one turn; 2.5 does not.
+DEFAULT_MODEL = "gemini-3.5-flash"
 
 
 def _project_id() -> str:
@@ -78,6 +79,8 @@ def generate_with_tools(
 
             client = get_vertex_client()
 
+            # Gemini 3+ (global): function tools + Google Search grounding on one turn.
+            # Gemini 2.5 rejects that mix — keep VERTEX_GEMINI_MODEL on 3.x for search.
             tools = [
                 types.Tool(
                     function_declarations=[

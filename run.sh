@@ -41,12 +41,22 @@ set +a
 
 if [[ ! -f "$FUNCTIONS_DIR/.secret.local" ]]; then
   cat >"$FUNCTIONS_DIR/.secret.local" <<'EOF'
-# Emulator override for SecretParam USDA_FDC_API_KEY (gitignored).
+# Emulator overrides for SecretParam (gitignored). Keeps the worker off Secret Manager.
 # Paste a data.gov key if you need USDA; seed catalog works without it.
 USDA_FDC_API_KEY=local-placeholder
+API_ACCESS_TOKEN_SECRET=local-placeholder
 EOF
-  echo "Created functions/.secret.local (placeholder USDA key)"
+  echo "Created functions/.secret.local (placeholder secrets)"
 fi
+
+# gRPC c-ares often fails on corp DNS ("Could not contact DNS servers" → Firestore timeouts).
+export GRPC_DNS_RESOLVER="${GRPC_DNS_RESOLVER:-native}"
+export GOOGLE_CLOUD_QUOTA_PROJECT="${GOOGLE_CLOUD_QUOTA_PROJECT:-capy-dogfood}"
+# macOS: Python Functions workers fork after ObjC is loaded → crash unless disabled.
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY="${OBJC_DISABLE_INITIALIZE_FORK_SAFETY:-YES}"
+# Prefer env proxy lookup over macOS _scproxy (segfaults in gunicorn children).
+export no_proxy="${no_proxy:-*}"
+export NO_PROXY="${NO_PROXY:-*}"
 
 # Physical-device builds need the Mac LAN IP (Simulator uses 127.0.0.1 in code).
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || true)"

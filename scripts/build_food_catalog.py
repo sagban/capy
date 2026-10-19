@@ -100,6 +100,79 @@ def family_for(food: dict) -> str:
     return "other"
 
 
+_SERVING_PREF = (
+    re.compile(r"\bserving\b", re.I),
+    re.compile(r"\btbsp\b|tablespoon", re.I),
+    re.compile(r"\btsp\b|teaspoon", re.I),
+    re.compile(r"\bcup\b", re.I),
+    re.compile(r"\blarge\b|\bmedium\b|\bsmall\b", re.I),
+    re.compile(r"\boz\b|ounce", re.I),
+)
+
+
+def _portion_label(portion: dict) -> str:
+    for key in (
+        "portionDescription",
+        "modifier",
+        "measureUnit",
+        "householdServingFullText",
+    ):
+        raw = portion.get(key)
+        if isinstance(raw, dict):
+            raw = raw.get("name") or raw.get("description") or ""
+        text = str(raw or "").strip()
+        if text:
+            return text
+    amount = portion.get("amount") or portion.get("value")
+    if amount is not None:
+        return f"{amount:g}"
+    return "serving"
+
+
+def pick_serving(food: dict) -> tuple[float, str]:
+    """USDA household serving → (grams, label). 0 grams means unknown."""
+    # Branded / survey fields when present.
+    try:
+        branded_g = float(food.get("servingSize") or 0)
+    except (TypeError, ValueError):
+        branded_g = 0.0
+    household = str(food.get("householdServingFullText") or "").strip()
+    unit = str(food.get("servingSizeUnit") or "").strip().lower()
+    if branded_g > 0 and unit in ("", "g", "grm", "gram", "grams"):
+        return branded_g, household or f"{branded_g:g} g serving"
+
+    candidates: list[tuple[int, float, str]] = []
+    for portion in food.get("foodPortions") or []:
+        if not isinstance(portion, dict):
+            continue
+        try:
+            grams = float(portion.get("gramWeight") or 0)
+        except (TypeError, ValueError):
+            continue
+        if grams <= 0:
+            continue
+        label = _portion_label(portion)
+        rank = 50
+        for i, pattern in enumerate(_SERVING_PREF):
+            if pattern.search(label):
+                rank = i
+                break
+        # Prefer ~one unit amounts (amount≈1) over multi-unit piles.
+        try:
+            amount = float(portion.get("amount") or portion.get("value") or 1)
+        except (TypeError, ValueError):
+            amount = 1.0
+        if amount > 1.5:
+            rank += 10
+        candidates.append((rank, grams, label or f"{grams:g} g"))
+
+    if not candidates:
+        return 0.0, ""
+    candidates.sort(key=lambda row: (row[0], row[1]))
+    _, grams, label = candidates[0]
+    return grams, label
+
+
 def convert_food(food: dict | None, source: str) -> dict | None:
     if not food or not isinstance(food, dict):
         return None
@@ -116,7 +189,8 @@ def convert_food(food: dict | None, source: str) -> dict | None:
     name = (food.get("description") or "").strip()
     if not name:
         return None
-    return {
+    serving_g, serving_label = pick_serving(food)
+    row = {
         "id": f"usda_{fdc_id}",
         "name": name,
         "family": family_for(food),
@@ -130,6 +204,11 @@ def convert_food(food: dict | None, source: str) -> dict | None:
         "usdaFdcId": int(fdc_id),
         "source": source,
     }
+    if serving_g > 0:
+        row["servingGrams"] = round(serving_g, 2)
+        if serving_label:
+            row["servingLabel"] = serving_label
+    return row
 
 
 def load_foundation(path: Path) -> list[dict]:
@@ -150,7 +229,17 @@ def load_sr_legacy(path: Path) -> list[dict]:
         print("installing ijson…", file=sys.stderr)
         import subprocess
 
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "ijson"])
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--break-system-packages",
+                "ijson",
+            ]
+        )
         import ijson
 
     out = []
@@ -246,7 +335,7 @@ def main() -> int:
     foods, composites, templates = merge_overlay(list(by_id.values()), overlay)
 
     catalog = {
-        "version": 2,
+        "version": 3,
         "source": {
             "foundation": "FoodData_Central_foundation_food_json_2026-04-30",
             "srLegacy": "FoodData_Central_sr_legacy_food_json_2018-04",

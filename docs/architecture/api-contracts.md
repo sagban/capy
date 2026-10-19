@@ -240,7 +240,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 | `delete_entry` | `confirm_delete` for a whole `entryId` (optional `dayKey`). User confirms, then `delete_meal` writes Firestore. |
 | `save_memory` | `memoryProposals`. Can accompany any other tool. |
 
-The meal model also has **Google Search grounding** on the same Vertex `generate_content` call (not a harness tool).
+The meal model also has **Google Search grounding** on the same Vertex `generate_content` call (not a harness tool). Requires Gemini 3+ (`VERTEX_GEMINI_MODEL`, default `gemini-3.5-flash`) at Vertex location `global` — Gemini 2.5 rejects mixing `google_search` with function tools.
 
 Tools are LangChain `@tool` functions in `functions/agent/harness/tools/registry.py`. Executors live in `jobs.py`. Gemini sees those descriptions and JSON Schema (including when-to-use guidance and examples in each tool docstring). Request context is `InjectedToolArg`, not a model parameter. The system prompt in `functions/agent/llm/prompt.py` covers persona, context-pack grounding, trust boundaries, Google Search, orchestration, assistance level, and global food rules — not per-tool parameter playbooks.
 

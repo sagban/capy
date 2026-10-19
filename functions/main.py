@@ -7,6 +7,33 @@ Production auth:
 
 from __future__ import annotations
 
+# macOS + gunicorn: forked workers SIGSEGV when native code hits CFPreferences
+# after fork (_scproxy / Arrow curl). Mitigations must run at import time.
+import os
+import sys
+
+if sys.platform == "darwin":
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
+    try:
+        import urllib.request
+
+        urllib.request.getproxies = urllib.request.getproxies_environment
+    except Exception:  # noqa: BLE001
+        pass
+    # Load the app in the gunicorn master before fork so curl/Arrow init pre-fork.
+    try:
+        from functions_framework._http import gunicorn as _ff_gunicorn
+
+        _ff_guni_init = _ff_gunicorn.GunicornApplication.__init__
+
+        def _ff_guni_init_preload(self, app, host, port, debug, **options):  # type: ignore[no-untyped-def]
+            options.setdefault("preload_app", True)
+            return _ff_guni_init(self, app, host, port, debug, **options)
+
+        _ff_gunicorn.GunicornApplication.__init__ = _ff_guni_init_preload  # type: ignore[method-assign]
+    except Exception:  # noqa: BLE001
+        pass
+
 import logging
 
 # Do not register Phoenix at import — OTEL setup has crashed the emulator worker.
@@ -126,3 +153,9 @@ def exchange_access_token(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
             message=str(exc),
         ) from exc
+
+
+# Warm Phoenix/Arrow (curl) during gunicorn preload on macOS so fork children
+# do not call Curl_macos_init for the first time post-fork.
+if sys.platform == "darwin":
+    phoenix_tracing.setup()

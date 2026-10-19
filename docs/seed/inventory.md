@@ -14,9 +14,11 @@ python3 scripts/build_food_catalog.py
 | USDA SR Legacy | Broad classic nutrient database |
 | [`CatalogOverlay.json`](../../capy/Resources/CatalogOverlay.json) | Indian/custom foods + composites (paneer, roti, dal, …) |
 
+Each food may include `servingGrams` / `servingLabel` from USDA `foodPortions` (or overlay). Manual Log uses that as **1 serving** (not 100g).
+
 Outputs:
 
-- [`capy/Resources/SeedFoods.json`](../../capy/Resources/SeedFoods.json) (~8k foods, ~1.7 MB)
+- [`capy/Resources/SeedFoods.json`](../../capy/Resources/SeedFoods.json) (~8k foods, ~2.1 MB)
 - [`functions/seed/SeedFoods.json`](../../functions/seed/SeedFoods.json) (same file for harness)
 
 Raw USDA zips live under `scripts/data/usda/` (gitignored). Re-run the script when USDA releases updates.

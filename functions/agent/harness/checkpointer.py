@@ -22,6 +22,7 @@ def get_checkpointer() -> Any:
         _CHECKPOINTER = MemorySaver()
         return _CHECKPOINTER
     try:
+        from google.cloud import firestore
         from langgraph_checkpoint_firestore import FirestoreSaver
 
         project = (
@@ -30,10 +31,17 @@ def get_checkpointer() -> Any:
             or os.environ.get("GCP_PROJECT")
             or "capy-dogfood"
         )
-        _CHECKPOINTER = FirestoreSaver.from_conn_info(
+        database_id = os.environ.get("FIRESTORE_DATABASE_ID", "capy").strip() or "capy"
+        collection = "agentGraphCheckpoints"
+        # from_conn_info is a @contextmanager — do not pass it to compile().
+        # Library hardcodes Client(project=…) → (default); rebind to named DB `capy`.
+        saver = FirestoreSaver(
             project_id=project,
-            checkpoints_collection="agentGraphCheckpoints",
+            checkpoints_collection=collection,
         )
+        saver.client = firestore.Client(project=project, database=database_id)
+        saver.checkpoints_collection = saver.client.collection(collection)
+        _CHECKPOINTER = saver
         return _CHECKPOINTER
     except Exception:  # noqa: BLE001
         from langgraph.checkpoint.memory import MemorySaver

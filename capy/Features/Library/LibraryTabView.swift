@@ -6,6 +6,8 @@ struct LibraryTabView: View {
     @Query(sort: \LibraryItem.createdAt, order: .reverse) private var items: [LibraryItem]
 
     @State private var kindFilter: LibraryKind = .meal
+    @State private var editorKind: LibraryKind = .meal
+    @State private var editingItem: LibraryItem?
     @State private var showEditor = false
     @State private var searchText = ""
 
@@ -46,7 +48,11 @@ struct LibraryTabView: View {
                                 .foregroundStyle(Color.capy.textSecondary)
                         } else {
                             ForEach(aiItems) { item in
-                                libraryRow(item)
+                                Button {
+                                    openEditor(item)
+                                } label: {
+                                    libraryRow(item)
+                                }
                             }
                             .onDelete { delete(aiItems, at: $0) }
                         }
@@ -62,7 +68,11 @@ struct LibraryTabView: View {
                             .foregroundStyle(Color.capy.textSecondary)
                         } else {
                             ForEach(userItems) { item in
-                                libraryRow(item)
+                                Button {
+                                    openEditor(item)
+                                } label: {
+                                    libraryRow(item)
+                                }
                             }
                             .onDelete { delete(userItems, at: $0) }
                         }
@@ -76,6 +86,8 @@ struct LibraryTabView: View {
                 SettingsToolbarButton()
                 ToolbarItem(placement: .primaryAction) {
                     Button {
+                        editingItem = nil
+                        editorKind = kindFilter
                         showEditor = true
                     } label: {
                         Image(systemName: "plus")
@@ -83,18 +95,30 @@ struct LibraryTabView: View {
                     .accessibilityLabel("Add library item")
                 }
             }
-            .sheet(isPresented: $showEditor) {
-                LibraryEditorSheet(defaultKind: kindFilter)
-                    .presentationDetents([.medium, .large])
+            .sheet(isPresented: $showEditor, onDismiss: { editingItem = nil }) {
+                LibraryEditorSheet(defaultKind: editorKind, existing: editingItem)
+                    .presentationDetents(
+                        {
+                            let kind = editingItem?.kind ?? editorKind
+                            return (kind == .recipe || kind == .meal) ? [.large] : [.medium, .large]
+                        }()
+                    )
             }
         }
     }
 
+    private func openEditor(_ item: LibraryItem) {
+        editingItem = item
+        editorKind = item.kind
+        showEditor = true
+    }
+
     private func libraryRow(_ item: LibraryItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(item.name)
                     .font(.headline)
+                    .foregroundStyle(Color.capy.textPrimary)
                 if item.origin == .aiGenerated {
                     Text("AI")
                         .font(.caption2.weight(.bold))
@@ -102,11 +126,26 @@ struct LibraryTabView: View {
                         .padding(.vertical, 2)
                         .background(Color.capy.accentSoft, in: Capsule())
                 }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            Text("\(Int(item.calories)) cal · P \(Int(item.proteinG)) · C \(Int(item.carbsG)) · F \(Int(item.fatG))")
-                .font(.subheadline)
+            FoodMacroBadgeRow(
+                calories: item.calories,
+                carbsG: item.carbsG,
+                fatG: item.fatG,
+                proteinG: item.proteinG
+            )
+            if (item.kind == .recipe || item.kind == .meal), !item.ingredients.isEmpty {
+                Text(
+                    item.kind == .meal
+                    ? "\(item.ingredients.count) items"
+                    : "\(item.ingredients.count) ingredients"
+                )
+                .font(.caption)
                 .foregroundStyle(Color.capy.textSecondary)
-            if !item.detail.isEmpty {
+            } else if !item.detail.isEmpty {
                 Text(item.detail)
                     .font(.caption)
                     .foregroundStyle(Color.capy.textSecondary)
@@ -118,84 +157,5 @@ struct LibraryTabView: View {
         for index in offsets {
             modelContext.delete(source[index])
         }
-    }
-}
-
-struct LibraryEditorSheet: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-
-    let defaultKind: LibraryKind
-
-    @State private var name = ""
-    @State private var kind: LibraryKind
-    @State private var detail = ""
-    @State private var calories = 400.0
-    @State private var protein = 30.0
-    @State private var carbs = 40.0
-    @State private var fat = 15.0
-
-    init(defaultKind: LibraryKind) {
-        self.defaultKind = defaultKind
-        _kind = State(initialValue: defaultKind)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Item") {
-                    TextField("Name", text: $name)
-                    Picker("Kind", selection: $kind) {
-                        ForEach(LibraryKind.allCases) { Text($0.title).tag($0) }
-                    }
-                    TextField("Notes", text: $detail)
-                }
-                Section("Macros (per serving)") {
-                    LabeledContent("Calories") {
-                        TextField("cal", value: $calories, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                    }
-                    LabeledContent("Protein") {
-                        TextField("g", value: $protein, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                    }
-                    LabeledContent("Carbs") {
-                        TextField("g", value: $carbs, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                    }
-                    LabeledContent("Fat") {
-                        TextField("g", value: $fat, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                    }
-                }
-            }
-            .navigationTitle("Add to library")
-            .navigationBarTitleDisplayMode(.inline)
-            .scrollDismissesKeyboard(.interactively)
-            .keyboardDoneToolbar()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Keyboard.dismiss()
-                        save()
-                    }
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    private func save() {
-        modelContext.insert(
-            LibraryItem(
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                kind: kind,
-                origin: .user,
-                detail: detail,
-                calories: calories,
-                proteinG: protein,
-                carbsG: carbs,
-                fatG: fat
-            )
-        )
-        dismiss()
     }
 }

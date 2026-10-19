@@ -4,7 +4,7 @@ import SwiftData
 enum SeedImporter {
     private static let bundleResource = "SeedFoods"
     /// Must match `version` in SeedFoods.json (catalog build script bumps both).
-    static let bundledCatalogVersion = 2
+    static let bundledCatalogVersion = 3
     private static let importedVersionKey = "capy.seedCatalog.importedVersion"
     private static let legacyFlagPrefix = "capy.seedCatalog.version"
 
@@ -23,6 +23,8 @@ enum SeedImporter {
         let aliases: [String]?
         let usdaFdcId: Int?
         let source: String?
+        let servingGrams: Double?
+        let servingLabel: String?
     }
 
     struct SeedMacros: Decodable {
@@ -109,6 +111,8 @@ enum SeedImporter {
                 aliases: seed.aliases ?? [],
                 family: seed.family,
                 per100g: seed.per100g.asTotals,
+                servingGrams: seed.servingGrams ?? 0,
+                servingLabel: seed.servingLabel ?? "",
                 isComposite: false,
                 source: source,
                 usdaFdcId: seed.usdaFdcId,
@@ -144,6 +148,8 @@ enum SeedImporter {
                 aliases: [],
                 family: "composite",
                 per100g: per100,
+                servingGrams: totalGrams > 0 ? totalGrams : 0,
+                servingLabel: totalGrams > 0 ? "1 bowl" : "",
                 isComposite: true,
                 source: .seed,
                 existing: foodById[composite.id],
@@ -166,6 +172,8 @@ enum SeedImporter {
         aliases: [String],
         family: String,
         per100g: MacroTotals,
+        servingGrams: Double = 0,
+        servingLabel: String = "",
         isComposite: Bool,
         source: FoodSource = .seed,
         usdaFdcId: Int? = nil,
@@ -180,6 +188,8 @@ enum SeedImporter {
             existing.proteinGPer100g = per100g.proteinG
             existing.carbsGPer100g = per100g.carbsG
             existing.fatGPer100g = per100g.fatG
+            existing.servingGrams = servingGrams
+            existing.servingLabel = servingLabel
             existing.isComposite = isComposite
             existing.source = source
             if let usdaFdcId { existing.usdaFdcId = usdaFdcId }
@@ -193,6 +203,8 @@ enum SeedImporter {
             source: source,
             usdaFdcId: usdaFdcId,
             per100g: per100g,
+            servingGrams: servingGrams,
+            servingLabel: servingLabel,
             ingredientFamily: family,
             isComposite: isComposite
         )
@@ -223,10 +235,9 @@ enum SeedImporter {
 
     static func searchFoods(query: String, in context: ModelContext, limit: Int = 30) -> [Food] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Empty query: no A→Z dump — Manual Log uses recent/meal suggestions instead.
         if q.isEmpty {
-            var descriptor = FetchDescriptor<Food>(sortBy: [SortDescriptor(\.canonicalName)])
-            descriptor.fetchLimit = limit
-            return (try? context.fetch(descriptor)) ?? []
+            return []
         }
         let needle = q.lowercased()
         // Short queries: avoid substring traps ("hi" ⊂ "chicken" / "white").

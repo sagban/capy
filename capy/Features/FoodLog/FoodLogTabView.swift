@@ -206,23 +206,12 @@ struct FoodLogTabView: View {
                     .font(.caption)
                     .foregroundStyle(Color.capy.textSecondary)
             }
-            HStack(spacing: 10) {
-                macroBadge("flame.fill", units.formattedEnergy(entry.calories), Color.capy.budgetCalories)
-                macroBadge("circle.fill", "C \(Int(entry.carbsG))", Color.capy.budgetCarbs)
-                macroBadge("circle.fill", "F \(Int(entry.fatG))", Color.capy.budgetFat)
-                macroBadge("circle.fill", "P \(Int(entry.proteinG))", Color.capy.budgetProtein)
-            }
-        }
-    }
-
-    private func macroBadge(_ systemName: String, _ text: String, _ color: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: systemName)
-                .font(.caption2)
-                .foregroundStyle(color)
-            Text(text)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Color.capy.textSecondary)
+            FoodMacroBadgeRow(
+                calories: entry.calories,
+                carbsG: entry.carbsG,
+                fatG: entry.fatG,
+                proteinG: entry.proteinG
+            )
         }
     }
 }

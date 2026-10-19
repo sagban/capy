@@ -1,28 +1,5 @@
 import Foundation
 
-enum VerifyRejectionReason: String, Equatable, Sendable {
-    case caloriesExceedRemaining
-    case proteinOutOfBand
-    case carbsOutOfBand
-    case fatOutOfBand
-}
-
-enum VerifyOutcome: Equatable, Sendable {
-    case accepted(MacroTotals)
-    case rejected(reason: VerifyRejectionReason, computed: MacroTotals)
-    case abstain(reasons: [VerifyRejectionReason])
-}
-
-/// What a suggestion was built for: a calorie ceiling and optional protein floor
-/// (stated, else the slot's typical meal, else weighted slot defaults on what's left).
-/// Not the whole day's remainder. There is no calorie floor.
-struct SuggestionBudget: Equatable, Sendable {
-    var calories: Double
-    var proteinG: Double?
-    var carbsG: Double?
-    var fatG: Double?
-}
-
 /// Deterministic suggestion verifier. LLM never supplies trusted macros.
 enum SuggestionVerifier {
     /// Each macro must land within ±`band` of remaining (default 10%).

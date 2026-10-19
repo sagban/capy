@@ -5,6 +5,7 @@ struct ManualLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LibraryItem.createdAt, order: .reverse) private var library: [LibraryItem]
+    @Query(sort: \MealEntry.timestamp, order: .reverse) private var mealEntries: [MealEntry]
 
     let initialDay: Date
     let initialMealSlot: String?
@@ -24,15 +25,32 @@ struct ManualLogSheet: View {
         self.initialMealSlot = initialMealSlot
     }
 
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool { !trimmedQuery.isEmpty }
+
     private var filteredLibrary: [LibraryItem] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return Array(library.prefix(20)) }
+        guard isSearching else { return [] }
+        let q = trimmedQuery.lowercased()
         return library.filter {
             $0.name.lowercased().contains(q) || $0.detail.lowercased().contains(q)
         }
     }
 
     private var filteredCatalog: [Food] { catalogResults }
+
+    /// Distinct recently logged foods (newest first).
+    private var recentlyUsed: [FoodLogSuggestion] {
+        suggestions(from: mealEntries, mealSlot: nil, limit: 15)
+    }
+
+    /// Prior logs for the meal slot this sheet was opened from.
+    private var mealSlotSuggestions: [FoodLogSuggestion] {
+        guard let slot = initialMealSlot, !slot.isEmpty else { return [] }
+        return suggestions(from: mealEntries, mealSlot: slot, limit: 12)
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -74,68 +92,69 @@ struct ManualLogSheet: View {
     private var foodPicker: some View {
         List {
             Section {
-                TextField("Search meals, recipes, foods", text: $query)
+                TextField("Search foods", text: $query)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
 
-            if !filteredCatalog.isEmpty {
-                Section("Catalog") {
-                    ForEach(filteredCatalog, id: \.id) { food in
-                        Button {
-                            path.append(draft(from: food))
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(food.canonicalName)
-                                        .foregroundStyle(Color.primary)
-                                    Text(food.isComposite ? "Composite" : food.ingredientFamily)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text("\(Int(food.caloriesPer100g)) cal / 100g · P \(Int(food.proteinGPer100g)) · C \(Int(food.carbsGPer100g)) · F \(Int(food.fatGPer100g))")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.capy.textSecondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
+            if !isSearching {
+                if !mealSlotSuggestions.isEmpty {
+                    Section("For \(initialMealSlot ?? "this meal")") {
+                        ForEach(mealSlotSuggestions) { tip in
+                            suggestionRow(tip)
+                        }
+                    }
+                }
+                if !recentlyUsed.isEmpty {
+                    Section("Recently used") {
+                        ForEach(recentlyUsed) { tip in
+                            suggestionRow(tip)
+                        }
+                    }
+                } else if mealSlotSuggestions.isEmpty {
+                    Section {
+                        Text("Type to search the catalog, or add a custom food.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                if !filteredCatalog.isEmpty {
+                    Section("Catalog") {
+                        ForEach(filteredCatalog, id: \.id) { food in
+                            Button {
+                                path.append(draft(from: food))
+                            } label: {
+                                FoodPickRow(
+                                    title: food.canonicalName,
+                                    portionGrams: catalogServingGrams(food),
+                                    subtitle: food.isComposite ? "Composite" : food.ingredientFamily,
+                                    detail: catalogDetail(food)
+                                )
                             }
                         }
                     }
                 }
-            }
 
-            if !filteredLibrary.isEmpty {
-                Section("Library") {
-                    ForEach(filteredLibrary) { item in
-                        Button {
-                            path.append(draft(from: item))
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.name)
-                                        .foregroundStyle(Color.primary)
-                                    Text(item.detail.isEmpty ? item.origin.title : item.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text("\(Int(item.calories)) cal · P \(Int(item.proteinG)) · C \(Int(item.carbsG)) · F \(Int(item.fatG))")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.capy.textSecondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
+                if !filteredLibrary.isEmpty {
+                    Section("Library") {
+                        ForEach(filteredLibrary) { item in
+                            Button {
+                                path.append(draft(from: item))
+                            } label: {
+                                FoodPickRow(
+                                    title: item.name,
+                                    portionGrams: libraryServingGrams(item),
+                                    subtitle: item.detail.isEmpty ? item.origin.title : item.detail,
+                                    detail: "\(Int(item.calories)) cal / serving"
+                                )
                             }
                         }
                     }
-                }
-            } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      filteredCatalog.isEmpty {
-                Section {
-                    Text("No catalog or library matches")
-                        .foregroundStyle(.secondary)
+                } else if filteredCatalog.isEmpty {
+                    Section {
+                        Text("No catalog or library matches")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -144,30 +163,113 @@ struct ManualLogSheet: View {
                     path.append(customDraft())
                 } label: {
                     Label(
-                        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        trimmedQuery.isEmpty
                         ? "Add custom food"
-                        : "Use “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”",
+                        : "Use “\(trimmedQuery)”",
                         systemImage: "plus.circle.fill"
                     )
                     .foregroundStyle(Color.capy.accent)
                 }
             } footer: {
-                Text("Pick a food first. Next you’ll set meal, date, and portion.")
+                Text(isSearching
+                     ? "Pick a food, then set meal, date, and portion."
+                     : "Start typing to search, or re-log something recent.")
             }
         }
         .scrollDismissesKeyboard(.interactively)
     }
 
-    private func draft(from food: Food) -> FoodLogDraft {
-        FoodLogDraft(
+    @ViewBuilder
+    private func suggestionRow(_ tip: FoodLogSuggestion) -> some View {
+        Button {
+            path.append(draft(from: tip))
+        } label: {
+            FoodPickRow(
+                title: tip.name,
+                portionGrams: tip.grams,
+                subtitle: tip.detail,
+                detail: "\(Int(tip.calories)) cal"
+            )
+        }
+    }
+
+    private func catalogServingGrams(_ food: Food) -> Double {
+        if food.servingGrams > 0 { return food.servingGrams }
+        return PortionDefaults.servingGrams(
+            family: food.ingredientFamily,
             name: food.canonicalName,
-            detail: food.isComposite ? "Composite" : food.ingredientFamily,
-            baseGrams: 100,
-            baseCalories: food.caloriesPer100g,
-            baseProteinG: food.proteinGPer100g,
-            baseCarbsG: food.carbsGPer100g,
-            baseFatG: food.fatGPer100g,
-            grams: 100,
+            kcalPer100g: food.caloriesPer100g
+        )
+    }
+
+    private func catalogDetail(_ food: Food) -> String {
+        let serving = catalogServingGrams(food)
+        let macros = PortionDefaults.scaledMacros(per100g: food.per100g, grams: serving)
+        let cal = "\(Int(macros.calories.rounded())) cal"
+        if food.servingLabel.isEmpty { return cal }
+        return "\(cal) / \(food.servingLabel)"
+    }
+
+    private func libraryServingGrams(_ item: LibraryItem) -> Double {
+        LibraryIngredientLine.from(libraryItem: item, servings: 1).servingGrams
+    }
+
+    private func suggestions(
+        from entries: [MealEntry],
+        mealSlot: String?,
+        limit: Int
+    ) -> [FoodLogSuggestion] {
+        var seen = Set<String>()
+        var out: [FoodLogSuggestion] = []
+        for entry in entries where entry.confirmed {
+            if let mealSlot, (entry.mealSlot ?? "") != mealSlot { continue }
+            for item in entry.items {
+                let key = item.foodId.isEmpty ? item.name.lowercased() : item.foodId
+                guard seen.insert(key).inserted else { continue }
+                out.append(
+                    FoodLogSuggestion(
+                        id: "\(entry.uuid.uuidString)-\(item.persistentModelID)",
+                        name: item.name,
+                        detail: entry.mealSlot ?? "",
+                        foodId: item.foodId,
+                        family: item.ingredientFamily,
+                        grams: max(item.grams, 1),
+                        calories: item.calories,
+                        proteinG: item.proteinG,
+                        carbsG: item.carbsG,
+                        fatG: item.fatG
+                    )
+                )
+                if out.count >= limit { return out }
+            }
+        }
+        return out
+    }
+
+    private func draft(from food: Food) -> FoodLogDraft {
+        let servingG: Double = {
+            if food.servingGrams > 0 { return food.servingGrams }
+            return PortionDefaults.servingGrams(
+                family: food.ingredientFamily,
+                name: food.canonicalName,
+                kcalPer100g: food.caloriesPer100g
+            )
+        }()
+        let macros = PortionDefaults.scaledMacros(per100g: food.per100g, grams: servingG)
+        let detail: String = {
+            if food.isComposite { return "Composite" }
+            if !food.servingLabel.isEmpty { return food.servingLabel }
+            return food.ingredientFamily
+        }()
+        return FoodLogDraft(
+            name: food.canonicalName,
+            detail: detail,
+            baseGrams: servingG,
+            baseCalories: macros.calories,
+            baseProteinG: macros.proteinG,
+            baseCarbsG: macros.carbsG,
+            baseFatG: macros.fatG,
+            grams: servingG,
             day: initialDay,
             mealSlot: initialMealSlot ?? "",
             allowMacroEdit: false,
@@ -176,8 +278,27 @@ struct ManualLogSheet: View {
         )
     }
 
-    private func draft(from item: LibraryItem) -> FoodLogDraft {
+    private func draft(from tip: FoodLogSuggestion) -> FoodLogDraft {
         FoodLogDraft(
+            name: tip.name,
+            detail: tip.detail.isEmpty ? "Recent" : tip.detail,
+            baseGrams: tip.grams,
+            baseCalories: tip.calories,
+            baseProteinG: tip.proteinG,
+            baseCarbsG: tip.carbsG,
+            baseFatG: tip.fatG,
+            grams: tip.grams,
+            day: initialDay,
+            mealSlot: initialMealSlot ?? tip.detail,
+            allowMacroEdit: false,
+            foodId: tip.foodId,
+            ingredientFamily: tip.family
+        )
+    }
+
+    private func draft(from item: LibraryItem) -> FoodLogDraft {
+        // Library macros are absolute for one saved portion (= 1 serving).
+        return FoodLogDraft(
             name: item.name,
             detail: item.detail.isEmpty ? item.origin.title : item.detail,
             baseGrams: 100,
@@ -193,7 +314,7 @@ struct ManualLogSheet: View {
     }
 
     private func customDraft() -> FoodLogDraft {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = trimmedQuery
         return FoodLogDraft(
             name: trimmed,
             detail: "Custom",
@@ -208,6 +329,19 @@ struct ManualLogSheet: View {
             allowMacroEdit: true
         )
     }
+}
+
+private struct FoodLogSuggestion: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let detail: String
+    let foodId: String
+    let family: String
+    let grams: Double
+    let calories: Double
+    let proteinG: Double
+    let carbsG: Double
+    let fatG: Double
 }
 
 struct FoodLogDraft: Hashable {
@@ -287,7 +421,7 @@ struct LogFoodDetailsView: View {
     let onSaved: () -> Void
 
     @State private var didApplyMealSlot = false
-    @State private var portionUnit: PortionUnit = .gram
+    @State private var portionUnit: PortionUnit = .serving
 
     private var enabledMealTypes: [MealType] {
         mealTypes.filter(\.isEnabled)
@@ -316,13 +450,12 @@ struct LogFoodDetailsView: View {
                         .font(.subheadline)
                         .foregroundStyle(Color.capy.textSecondary)
                 }
-                HStack(spacing: 12) {
-                    macroBadge("flame.fill", units.formattedEnergy(draft.calories), Color.capy.budgetCalories)
-                    macroBadge("circle.fill", "C \(Int(draft.carbsG.rounded()))", Color.capy.budgetCarbs)
-                    macroBadge("circle.fill", "F \(Int(draft.fatG.rounded()))", Color.capy.budgetFat)
-                    macroBadge("circle.fill", "P \(Int(draft.proteinG.rounded()))", Color.capy.budgetProtein)
-                }
-                .padding(.vertical, 2)
+                FoodMacroBadgeRow(
+                    calories: draft.calories,
+                    carbsG: draft.carbsG,
+                    fatG: draft.fatG,
+                    proteinG: draft.proteinG
+                )
             } footer: {
                 Text(draft.allowMacroEdit
                      ? "Name this food however you like. Macros below are for the portion you set."
@@ -362,6 +495,18 @@ struct LogFoodDetailsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                    // Keep the typed number; only the unit’s meaning changes (1 serving → 1 g, not 50 g).
+                    .onChange(of: portionUnit) { oldUnit, newUnit in
+                        guard oldUnit != newUnit else { return }
+                        let amount = oldUnit.amount(
+                            fromGrams: draft.grams,
+                            servingGrams: draft.baseGrams
+                        )
+                        draft.grams = newUnit.grams(
+                            fromAmount: amount,
+                            servingGrams: draft.baseGrams
+                        )
+                    }
                 }
             } footer: {
                 if portionUnit == .serving {
@@ -408,7 +553,6 @@ struct LogFoodDetailsView: View {
             }
         }
         .onAppear {
-            portionUnit = units.foodMass.defaultPortionUnit
             MealTypeCatalog.seedIfNeeded(in: modelContext)
             applyMealSlotIfNeeded()
         }
@@ -482,17 +626,6 @@ struct LogFoodDetailsView: View {
         try? modelContext.save()
         UserSyncService.shared.enqueueLogMeal(entry)
         onSaved()
-    }
-
-    private func macroBadge(_ systemName: String, _ text: String, _ color: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: systemName)
-                .font(.caption2)
-                .foregroundStyle(color)
-            Text(text)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Color.capy.textSecondary)
-        }
     }
 
     private func editableMacroRow(_ title: String, value: Binding<Double>, suffix: String) -> some View {

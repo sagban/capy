@@ -35,6 +35,15 @@ enum GoalMetric: String, CaseIterable, Identifiable {
         }
     }
 
+    var symbolName: String {
+        switch self {
+        case .calories: "flame.fill"
+        case .protein: "dumbbell.fill"
+        case .carbs: "carrot.fill"
+        case .fat: "drop.fill"
+        }
+    }
+
     func value(from totals: MacroTotals, units: UnitPreferences) -> Double {
         switch self {
         case .calories: units.energy(fromKcal: totals.calories)

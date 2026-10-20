@@ -1,43 +1,6 @@
 import SwiftUI
 import SwiftData
 
-struct ConfirmLine: Identifiable, Equatable {
-    var id: String
-    var name: String
-    var foodId: String
-    var grams: Double
-    var per100g: MacroTotals
-    var source: String
-    var citationUrl: String?
-    var portionLabel: String?
-    var family: String
-    var entryId: String?
-    var itemIndex: Int?
-    var priorGrams: Double?
-
-    var macros: MacroTotals {
-        MacroMath.scale(per100g: per100g, grams: grams)
-    }
-}
-
-enum SourceBadge {
-    static func title(for source: String) -> String? {
-        switch source {
-        case "estimate": "estimate"
-        case "web": "web"
-        default: nil
-        }
-    }
-}
-
-enum ConfirmMath {
-    static func totals(_ lines: [ConfirmLine]) -> MacroTotals {
-        lines.reduce(.zero) { partial, line in
-            partial + line.macros
-        }
-    }
-}
-
 struct MealConfirmationSheet: View {
     @Binding var lines: [ConfirmLine]
     @Binding var mealSlot: String
@@ -74,7 +37,7 @@ struct MealConfirmationSheet: View {
                         }
                         ForEach($lines) { $line in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(readableFoodName(line.name))
+                                Text(ReadableFoodName.display(line.name))
                                 if let portion = line.portionLabel, !portion.isEmpty {
                                     Text(portion)
                                         .font(.caption)
@@ -141,6 +104,8 @@ struct MealConfirmationSheet: View {
     private func macroRow(_ label: String, _ value: Int, suffix: String = "") -> some View {
         LabeledContent(label) {
             Text("\(value)\(suffix)")
+                .contentTransition(.numericText())
+                .animation(.easeOut(duration: 0.2), value: value)
         }
     }
 }

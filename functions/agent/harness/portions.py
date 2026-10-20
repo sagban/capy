@@ -16,6 +16,8 @@ SWIFT_PARITY_GRAMS: dict[str, float] = {
     "gram": 1.0,
     "milliliter": 1.0,
     "ounce": 28.349523125,
+    # US fluid ounce ≈ water density (menu drinks).
+    "fluid_ounce": 29.5735295625,
     "teaspoon": 4.92892,
     "tablespoon": 14.7868,
     "cup": 236.588,
@@ -28,6 +30,9 @@ _UNIT_ALIASES: dict[str, str] = {
     "ml": "milliliter",
     "milliliter": "milliliter",
     "milliliters": "milliliter",
+    "floz": "fluid_ounce",
+    "fluidounce": "fluid_ounce",
+    "fluidounces": "fluid_ounce",
     "oz": "ounce",
     "ounce": "ounce",
     "ounces": "ounce",

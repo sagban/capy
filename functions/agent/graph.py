@@ -50,10 +50,34 @@ def llm_node(state: GraphState) -> GraphState:
 
 
 def environment_node(state: GraphState) -> GraphState:
-    with phoenix_tracing.chain_span("environment") as span:
+    calls = list(state.get("calls") or [])
+    tool_names = [str(c.get("name") or "?").strip() or "?" for c in calls]
+    # Phoenix: show tool name(s) instead of the opaque graph node label.
+    span_name = "+".join(tool_names) if tool_names else "environment"
+    with phoenix_tracing.chain_span(span_name) as span:
         out = run_environment(dict(state))
-        intent = (out.get("outcome") or {}).get("intent")
-        phoenix_tracing.set_output(span, {"intent": intent})
+        outcome = out.get("outcome") or {}
+        summary = {
+            "tools": tool_names,
+            "intent": outcome.get("intent"),
+            "reason": (outcome.get("phraseFacts") or {}).get("reason"),
+            "dropped": (outcome.get("phraseFacts") or {}).get("dropped"),
+            "optionCount": len(outcome.get("suggestionOptions") or []),
+            "pending": (outcome.get("pendingAction") or {}).get("type")
+            if isinstance(outcome.get("pendingAction"), dict)
+            else None,
+        }
+        phoenix_tracing.set_output(span, summary)
+        phoenix_tracing.set_attrs(
+            span,
+            {
+                "capy.tools": tool_names,
+                "capy.intent": summary.get("intent"),
+                "capy.dropped": summary.get("dropped"),
+                "capy.option_count": summary.get("optionCount"),
+                "capy.pending": summary.get("pending"),
+            },
+        )
         return out
 
 

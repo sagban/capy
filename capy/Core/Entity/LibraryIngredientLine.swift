@@ -59,7 +59,8 @@ struct LibraryIngredientLine: Codable, Hashable, Identifiable {
                 .filter { $0.source == .catalogFood || $0.servingGrams > 0 }
                 .map(\.grams)
                 .reduce(0, +)
-            return fromParts > 0 ? fromParts : 100
+            if fromParts > 0 { return fromParts }
+            return max(item.servingGrams, 1)
         }()
         let perServing = MacroTotals(
             calories: item.calories,

@@ -54,7 +54,7 @@ extension View {
     }
 }
 
-/// Food Log goals — four rings in a row, % centered, title below.
+/// Food Log goals — four rings in a row, icon centered, amount left below.
 struct GoalsGridView: View {
     @Environment(\.unitPreferences) private var units
 
@@ -65,38 +65,38 @@ struct GoalsGridView: View {
     var body: some View {
         HStack(spacing: 8) {
             GoalRingColumn(
+                metric: .calories,
                 title: units.energy == .kilojoule ? "Energy" : "Calories",
                 eaten: units.energy(fromKcal: eaten.calories),
                 target: units.energy(fromKcal: target.calories),
-                unitSuffix: units.energy.shortLabel,
-                color: Color.capy.budgetCalories
+                unitSuffix: units.energy.shortLabel
             ) {
                 onSelect(.calories)
             }
             GoalRingColumn(
+                metric: .protein,
                 title: "Protein",
                 eaten: eaten.proteinG,
                 target: target.proteinG,
-                unitSuffix: "g",
-                color: Color.capy.budgetProtein
+                unitSuffix: "g"
             ) {
                 onSelect(.protein)
             }
             GoalRingColumn(
+                metric: .carbs,
                 title: "Carbs",
                 eaten: eaten.carbsG,
                 target: target.carbsG,
-                unitSuffix: "g",
-                color: Color.capy.budgetCarbs
+                unitSuffix: "g"
             ) {
                 onSelect(.carbs)
             }
             GoalRingColumn(
+                metric: .fat,
                 title: "Fat",
                 eaten: eaten.fatG,
                 target: target.fatG,
-                unitSuffix: "g",
-                color: Color.capy.budgetFat
+                unitSuffix: "g"
             ) {
                 onSelect(.fat)
             }
@@ -105,12 +105,14 @@ struct GoalsGridView: View {
 }
 
 private struct GoalRingColumn: View {
+    let metric: GoalMetric
     let title: String
     let eaten: Double
     let target: Double
     let unitSuffix: String
-    let color: Color
     let action: () -> Void
+
+    private var color: Color { metric.color }
 
     private var ratio: Double {
         guard target > 0 else { return 0 }
@@ -118,10 +120,6 @@ private struct GoalRingColumn: View {
     }
 
     private var ringProgress: Double { min(1, ratio) }
-
-    private var percentText: String {
-        "\(Int((ratio * 100).rounded()))%"
-    }
 
     private var remaining: Double { max(0, target - eaten) }
     private var over: Double { max(0, eaten - target) }
@@ -153,12 +151,10 @@ private struct GoalRingColumn: View {
                         .trim(from: 0, to: ringProgress)
                         .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    Text(percentText)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(over > 0 ? Color.capy.warning : Color.capy.textPrimary)
-                        .minimumScaleFactor(0.65)
-                        .lineLimit(1)
-                        .padding(.horizontal, 4)
+                        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: ringProgress)
+                    Image(systemName: metric.symbolName)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(over > 0 ? Color.capy.warning : color)
                 }
                 .frame(width: 72, height: 72)
 
@@ -169,6 +165,8 @@ private struct GoalRingColumn: View {
                     Text(amountUnder)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(over > 0 ? Color.capy.warning : Color.capy.textPrimary)
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.25), value: amountUnder)
                 }
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -177,7 +175,7 @@ private struct GoalRingColumn: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(percentText), \(status)")
+        .accessibilityLabel("\(title), \(status)")
         .accessibilityHint("Shows \(title) chart")
     }
 }

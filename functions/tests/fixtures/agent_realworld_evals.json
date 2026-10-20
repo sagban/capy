@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "description": "Real-world harness evals (mock LLM tool calls). Assert resolve/suggest outcomes users hit in dogfood.",
+  "cases": [
+    {
+      "id": "venue_menu_with_portion_macros",
+      "utterance": "I'm at First Cup Coffee, suggest something from their menu",
+      "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "compose_suggestions",
+              "arguments": {
+                "venue": "First Cup Coffee",
+                "mealSlot": "Snacks",
+                "drafts": [
+                  {
+                    "title": "Iced Latte",
+                    "items": [
+                      {
+                        "foodQuery": "iced latte",
+                        "quantity": 12,
+                        "unit": "fl oz",
+                        "brandOrVenue": "First Cup Coffee",
+                        "portionMacros": {
+                          "calories": 150,
+                          "proteinG": 8,
+                          "carbsG": 18,
+                          "fatG": 5
+                        },
+                        "citationUrl": "https://example.com/first-cup-menu",
+                        "displayName": "Iced Latte"
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Spinach Feta Sandwich",
+                    "items": [
+                      {
+                        "foodQuery": "Spinach Feta Egg White Sandwich",
+                        "quantity": 1,
+                        "unit": "sandwich",
+                        "brandOrVenue": "First Cup Coffee",
+                        "portionMacros": {
+                          "calories": 290,
+                          "proteinG": 19,
+                          "carbsG": 34,
+                          "fatG": 8
+                        },
+                        "citationUrl": "https://toast.app",
+                        "displayName": "Spinach Feta & Egg White Sandwich"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "intent": "suggest_meal",
+        "minOptions": 2,
+        "optionSourcesAny": ["web"],
+        "pendingAction": null
+      }
+    },
+    {
+      "id": "venue_without_macros_fails_fast",
+      "utterance": "Suggest something from First Cup Coffee",
+      "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "compose_suggestions",
+              "arguments": {
+                "venue": "First Cup Coffee",
+                "drafts": [
+                  {
+                    "title": "Mystery Toast",
+                    "items": [
+                      {
+                        "foodQuery": "avocado toast special",
+                        "quantity": 1,
+                        "unit": "serving",
+                        "brandOrVenue": "First Cup Coffee"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "intent": "unknown",
+        "minOptions": 0,
+        "assistantContainsAny": ["menu nutrition", "couldn't source"],
+        "pendingAction": null
+      }
+    },
+    {
+      "id": "library_exact_title_logs",
+      "utterance": "log my Gym Bowl",
+      "libraryContext": [
+        {
+          "id": "lib-gym-bowl",
+          "name": "Gym Bowl",
+          "kind": "meal",
+          "calories": 520,
+          "proteinG": 42,
+          "carbsG": 48,
+          "fatG": 14,
+          "servingGrams": 400
+        },
+        {
+          "id": "lib-chicken-feast",
+          "name": "Sunday Chicken Feast",
+          "kind": "meal",
+          "calories": 900,
+          "proteinG": 60,
+          "carbsG": 70,
+          "fatG": 30,
+          "servingGrams": 500
+        }
+      ],
+      "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "new_entry",
+              "arguments": {
+                "items": [
+                  {
+                    "foodQuery": "Gym Bowl",
+                    "quantity": 1,
+                    "unit": "serving"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "intent": "log_meal",
+        "pendingAction": "confirm_log",
+        "resolvedSources": ["library"],
+        "resolvedNamesAny": ["Gym Bowl"]
+      }
+    },
+    {
+      "id": "library_not_overfit_on_staple",
+      "utterance": "log chicken",
+      "libraryContext": [
+        {
+          "id": "lib-chicken-feast",
+          "name": "Sunday Chicken Feast",
+          "kind": "meal",
+          "calories": 900,
+          "proteinG": 60,
+          "carbsG": 70,
+          "fatG": 30,
+          "servingGrams": 500
+        }
+      ],
+      "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "new_entry",
+              "arguments": {
+                "items": [
+                  {
+                    "foodQuery": "chicken",
+                    "quantity": 150,
+                    "unit": "g"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "pendingAction": "confirm_log",
+        "resolvedSourcesExclude": ["library"]
+      }
+    },
+    {
+      "id": "staple_egg_portion_clarifies",
+      "utterance": "I had 6 liquid egg whites",
+      "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "new_entry",
+              "arguments": {
+                "items": [
+                  {
+                    "foodQuery": "liquid egg whites",
+                    "quantity": 6,
+                    "unit": "serving"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "pendingActionAny": ["clarify_portion", "confirm_log", "clarify_food"],
+        "notIntent": null
+      }
+    },
+    {
+      "id": "suggest_then_log_option_id",
+      "utterance": "suggest lunch",
+      "searchStub": "egg",
+      "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "compose_suggestions",
+              "arguments": {
+                "mealSlot": "Lunch",
+                "drafts": [
+                  {
+                    "title": "Eggs",
+                    "items": [
+                      {
+                        "foodQuery": "egg",
+                        "quantity": 2,
+                        "unit": "large"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "followUp": {
+        "utterance": "log that",
+        "mock_turns": [
+          {
+            "kind": "tool_calls",
+            "calls": [
+              {
+                "name": "new_entry",
+                "arguments": {
+                  "optionId": "$firstOptionId"
+                }
+              }
+            ]
+          }
+        ],
+        "expect": {
+          "pendingAction": "confirm_log"
+        }
+      },
+      "expect": {
+        "intent": "suggest_meal",
+        "minOptions": 1,
+        "pendingAction": null
+      }
+    }
+  ]
+}

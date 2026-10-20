@@ -15,6 +15,29 @@ _MULTI_NEWLINE = re.compile(r"\n{3,}")
 _MULTI_SPACE = re.compile(r"[ \t]{2,}")
 
 
+def looks_like_structured_dump(text: str | None) -> bool:
+    """True when the model pasted tool/ResolvedItem JSON into the chat draft."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw[0] in "{[":
+        return True
+    lowered = raw.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "'foodid'",
+            '"foodid"',
+            "'per100g'",
+            '"per100g"',
+            "'displayname'",
+            '"displayname"',
+            "resolveditem(",
+            "committedfood(",
+        )
+    )
+
+
 def _normalize_whitespace(text: str) -> str:
     """Cosmetic whitespace only — does not alter words or remove content."""
     collapsed = _MULTI_NEWLINE.sub("\n\n", text)
@@ -29,7 +52,7 @@ def sanitize_assistant_message(
     allow_empty: bool = False,
 ) -> str:
     raw = (text or "").strip()
-    if not raw:
+    if not raw or looks_like_structured_dump(raw):
         if allow_empty:
             return ""
         return fallback or GRACEFUL_FAILURE

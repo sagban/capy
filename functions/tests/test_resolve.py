@@ -1,9 +1,9 @@
 """Resolve pipeline: confidence, deadline, queue."""
 
-from schemas import ItemDraft
+from schemas import ItemDraft, MacroTotals
 
 from agent.harness.deps import set_overrides
-from agent.harness.resolve import query_list, resolve_many
+from agent.harness.resolve import pick_for_suggestion, query_list, resolve_many
 
 
 def _clock_factory(values):
@@ -86,7 +86,7 @@ def test_medium_clarifies_top_candidates():
 
 
 def test_search_miss_clarifies_with_manual_log():
-    def search(_q):
+    def search(_q, **_kwargs):
         return {"results": [], "candidatesForClarify": [], "confidence": "none"}
 
     missed = resolve_many(
@@ -99,6 +99,148 @@ def test_search_miss_clarifies_with_manual_log():
     assert missed[0].status == "clarify_food"
     assert missed[0].reason == "not_found"
     assert missed[0].manual_log is True
+
+
+def test_cited_portion_macros_skip_search():
+    def search(_q, **_kwargs):
+        raise AssertionError("search should not run when portionMacros are cited")
+
+    # Menu: 12 fl oz latte = 150 kcal (Atwater-consistent).
+    results = resolve_many(
+        [
+            ItemDraft(
+                foodQuery="iced latte",
+                brandOrVenue="First Cup Coffee",
+                quantity=12,
+                unit="fl oz",
+                portionMacros=MacroTotals(calories=150, proteinG=8, carbsG=18, fatG=5),
+                citationUrl="https://example.com/menu",
+                displayName="Iced Latte",
+            )
+        ],
+        search=search,
+        fetch_measures=lambda _fid: [],
+        clock=lambda: 0,
+        deadline=45,
+    )
+    item = pick_for_suggestion(results[0])
+    assert item is not None
+    assert item.source == "web"
+    assert item.displayName == "Iced Latte"
+    assert item.citationUrl == "https://example.com/menu"
+    assert abs(item.grams - 12 * 29.5735295625) < 0.5  # US fl oz ≈ g water
+    # Stored density is per 100 g derived from the portion.
+    scaled = item.per100g.calories * item.grams / 100.0
+    assert abs(scaled - 150) < 1.0
+
+
+def test_cited_menu_unit_sandwich_uses_serving_baseline():
+    """Model often says unit=sandwich/order — must not drop when portionMacros are present."""
+
+    def search(_q, **_kwargs):
+        raise AssertionError("search should not run")
+
+    results = resolve_many(
+        [
+            ItemDraft(
+                foodQuery="Spinach Feta Sandwich",
+                brandOrVenue="First Cup Coffee",
+                quantity=1,
+                unit="sandwich",
+                portionMacros=MacroTotals(calories=290, proteinG=19, carbsG=34, fatG=8),
+                citationUrl="https://toast.app",
+                displayName="Spinach Feta & Egg White Sandwich",
+            )
+        ],
+        search=search,
+        fetch_measures=lambda _fid: [],
+        clock=lambda: 0,
+        deadline=45,
+    )
+    item = pick_for_suggestion(results[0])
+    assert item is not None
+    assert item.source == "web"
+    assert item.grams == 180
+    assert abs(item.per100g.calories - 290 * 100 / 180) < 0.5
+
+
+def test_cited_slice_uses_plate_baseline_not_100g():
+    def search(_q, **_kwargs):
+        raise AssertionError("search should not run")
+
+    results = resolve_many(
+        [
+            ItemDraft(
+                foodQuery="quiche",
+                brandOrVenue="First Cup Coffee",
+                quantity=1,
+                unit="slice",
+                portionMacros=MacroTotals(calories=420, proteinG=18, carbsG=28, fatG=26),
+                citationUrl="https://toast.app",
+                displayName="Quiche",
+            )
+        ],
+        search=search,
+        fetch_measures=lambda _fid: [],
+        clock=lambda: 0,
+        deadline=45,
+    )
+    item = pick_for_suggestion(results[0])
+    assert item is not None
+    assert item.grams == 150
+    assert abs(item.per100g.calories * item.grams / 100.0 - 420) < 1.0
+
+
+def test_cited_venue_serving_uses_plate_baseline():
+    def search(_q, **_kwargs):
+        raise AssertionError("search should not run")
+
+    results = resolve_many(
+        [
+            ItemDraft(
+                foodQuery="quiche",
+                brandOrVenue="First Cup Coffee",
+                quantity=1,
+                unit="serving",
+                portionMacros=MacroTotals(calories=420, proteinG=18, carbsG=28, fatG=26),
+                citationUrl="https://toast.app",
+                displayName="Quiche",
+            )
+        ],
+        search=search,
+        fetch_measures=lambda _fid: [],
+        clock=lambda: 0,
+        deadline=45,
+    )
+    item = pick_for_suggestion(results[0])
+    assert item is not None
+    assert item.grams == 180
+
+
+def test_venue_without_citation_skips_usda_and_fails_fast():
+    seen: list[bool] = []
+
+    def search(_q, *, include_usda: bool = True, **_kwargs):
+        seen.append(include_usda)
+        return {"results": [], "candidatesForClarify": [], "confidence": "none"}
+
+    results = resolve_many(
+        [
+            ItemDraft(
+                foodQuery="avocado toast",
+                brandOrVenue="First Cup Coffee",
+                quantity=1,
+                unit="serving",
+            )
+        ],
+        search=search,
+        fetch_measures=lambda _fid: [],
+        clock=lambda: 0,
+        deadline=45,
+    )
+    assert results[0].reason == "venue_needs_citation"
+    assert seen
+    assert all(flag is False for flag in seen)
 
 
 def test_deadline_pauses_as_clarify():

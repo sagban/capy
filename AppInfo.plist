@@ -42,9 +42,9 @@
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
-		<string>CapyBackground</string>
+		<string>CapyLaunchBackground</string>
 		<key>UIImageName</key>
-		<string>CapyLaunch</string>
+		<string>CapyLaunchIcon</string>
 		<key>UIImageRespectsSafeAreaInsets</key>
 		<false/>
 	</dict>

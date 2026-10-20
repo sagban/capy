@@ -2,6 +2,17 @@ import Foundation
 
 // MARK: - Request DTO
 
+struct LibraryItemRefDTO: Codable, Equatable, Sendable {
+    var id: String
+    var name: String
+    var kind: String
+    var calories: Double
+    var proteinG: Double
+    var carbsG: Double
+    var fatG: Double
+    var servingGrams: Double
+}
+
 struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
     var utterance: String
     var timezone: String
@@ -17,6 +28,8 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
     )
     /// Legacy alias for #37 memory snapshot contract coverage.
     var memorySnapshot: MemorySnapshotDTO?
+    /// Compact local library titles/macros for strict resolve (even with server context).
+    var libraryContext: [LibraryItemRefDTO] = []
     /// Optional Capy thread id (`users/{uid}/threads/{threadId}`).
     var threadId: String = CapyThreadService.defaultThreadId
     /// When true, the server loads diary/profile/thread from Firestore (`context_loader`).
@@ -24,7 +37,7 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case utterance, timezone, dayKey, threadId, preferenceContext, diaryContext, longTermMemory
-        case conversation, context, memorySnapshot, useServerContext
+        case conversation, context, memorySnapshot, libraryContext, useServerContext
     }
 
     init(
@@ -41,6 +54,7 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
             lastIntent: nil
         ),
         memorySnapshot: MemorySnapshotDTO? = nil,
+        libraryContext: [LibraryItemRefDTO] = [],
         threadId: String = CapyThreadService.defaultThreadId,
         useServerContext: Bool = true
     ) {
@@ -53,6 +67,7 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
         self.conversation = conversation
         self.context = context
         self.memorySnapshot = memorySnapshot
+        self.libraryContext = libraryContext
         self.threadId = threadId
         self.useServerContext = useServerContext
     }
@@ -62,6 +77,9 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
         try container.encode(utterance, forKey: .utterance)
         try container.encode(timezone, forKey: .timezone)
         try container.encode(dayKey, forKey: .dayKey)
+        if !libraryContext.isEmpty {
+            try container.encode(libraryContext, forKey: .libraryContext)
+        }
         if useServerContext {
             try container.encode(true, forKey: .useServerContext)
             if threadId != CapyThreadService.defaultThreadId {
@@ -91,6 +109,7 @@ struct InterpretMealRequestDTO: Codable, Equatable, Sendable {
         context = try container.decodeIfPresent(InterpretContextDTO.self, forKey: .context)
             ?? InterpretContextDTO(assistanceLevel: "fullAssist", responseStyle: "balanced", lastIntent: nil)
         memorySnapshot = try container.decodeIfPresent(MemorySnapshotDTO.self, forKey: .memorySnapshot)
+        libraryContext = try container.decodeIfPresent([LibraryItemRefDTO].self, forKey: .libraryContext) ?? []
         threadId = try container.decodeIfPresent(String.self, forKey: .threadId) ?? CapyThreadService.defaultThreadId
         useServerContext = try container.decodeIfPresent(Bool.self, forKey: .useServerContext) ?? false
     }
@@ -527,9 +546,4 @@ struct SuggestionBudgetDTO: Codable, Equatable, Sendable {
     var proteinG: Double?
     var carbsG: Double?
     var fatG: Double?
-
-    var budget: SuggestionBudget? {
-        guard let calories, calories > 0 else { return nil }
-        return SuggestionBudget(calories: calories, proteinG: proteinG, carbsG: carbsG, fatG: fatG)
-    }
 }

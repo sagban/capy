@@ -50,6 +50,7 @@ from user_api import (
     handle_delete_meal,
     handle_get_thread,
     handle_log_meal,
+    handle_lookup_barcode,
     handle_patch_profile,
     handle_patch_thread,
 )
@@ -153,6 +154,17 @@ def exchange_access_token(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
             message=str(exc),
         ) from exc
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=30,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def lookup_barcode(req: https_fn.CallableRequest) -> dict:
+    """Exact GTIN → Open Food Facts product for Manual Log barcode scanner."""
+    return handle_lookup_barcode(req)
 
 
 # Warm Phoenix/Arrow (curl) during gunicorn preload on macOS so fork children

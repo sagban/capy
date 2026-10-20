@@ -175,3 +175,56 @@ def set_output(span: Any, value: Any) -> None:
         return
     text = value if isinstance(value, str) else _dumps(value)
     _set_io(span, output_value=text)
+
+
+def set_attrs(span: Any, attrs: dict[str, Any]) -> None:
+    if span is None:
+        return
+    for key, value in (attrs or {}).items():
+        if value is None:
+            continue
+        try:
+            if isinstance(value, (str, bool, int, float)):
+                span.set_attribute(key, value)
+            else:
+                span.set_attribute(key, _dumps(value)[:2000])
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def tool_result_summary(name: str, result: Any) -> dict[str, Any]:
+    """Compact Phoenix output for harness tool spans."""
+    if not isinstance(result, dict):
+        return {"ok": True, "tool": name}
+    out: dict[str, Any] = {
+        "tool": name,
+        "intent": result.get("intent"),
+        "error": result.get("error"),
+        "warnings": result.get("warnings") or [],
+    }
+    facts = result.get("phraseFacts") or {}
+    if facts.get("reason"):
+        out["reason"] = facts.get("reason")
+    if facts.get("dropped"):
+        out["dropped"] = facts.get("dropped")
+    options = result.get("suggestionOptions") or []
+    if options:
+        out["optionCount"] = len(options)
+        sources: list[str] = []
+        for opt in options:
+            for item in opt.get("items") or []:
+                src = item.get("source")
+                if src and src not in sources:
+                    sources.append(str(src))
+        out["optionSources"] = sources
+    pending = result.get("pendingAction")
+    if isinstance(pending, dict):
+        out["pending"] = pending.get("type")
+        payload = pending.get("payload") or {}
+        resolved = payload.get("resolvedItems") or []
+        if resolved:
+            out["resolvedSources"] = [str(i.get("source") or "") for i in resolved]
+            out["resolvedNames"] = [str(i.get("displayName") or "") for i in resolved][:6]
+        if payload.get("reason"):
+            out["pendingReason"] = payload.get("reason")
+    return out

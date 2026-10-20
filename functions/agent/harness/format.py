@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.harness.messaging import sanitize_assistant_message
+from agent.harness.messaging import looks_like_structured_dump, sanitize_assistant_message
 
 
 def summary_from_options(outcome: dict[str, Any]) -> str:
@@ -49,7 +49,12 @@ def clarify_question(outcome: dict[str, Any]) -> str:
     if len(labels) >= 2:
         shown = ", ".join(labels[:3])
         return f"Which one for {food}? {shown}" if food else shown
-    if food and reason in {"not_found", "deadline"}:
+    if food and reason in {"not_found", "deadline", "venue_needs_citation"}:
+        if reason == "venue_needs_citation":
+            return (
+                f"I need menu nutrition for {food}. Ask again and I'll look it up, "
+                "or log it from Food Log."
+            )
         return f"I couldn't find {food}. A brand or a plainer name helps, or log it from Food Log."
     return ""
 
@@ -57,6 +62,12 @@ def clarify_question(outcome: dict[str, Any]) -> str:
 def no_suggestion_line(outcome: dict[str, Any]) -> str:
     if outcome.get("reason") != "no suggestion survived":
         return ""
+    dropped = [str(row) for row in (outcome.get("dropped") or [])]
+    if any("venue_needs_citation" in row for row in dropped):
+        return (
+            "I need that place's menu nutrition to size it — ask again and I'll look it up, "
+            "or log it from Food Log."
+        )
     return "I couldn't source a meal from those drafts. Name a food you have, or log it from Food Log."
 
 
@@ -86,10 +97,28 @@ def menu_line(outcome: dict[str, Any]) -> str:
     return f"No menu names for {venue}."
 
 
+def confirm_log_line(outcome: dict[str, Any]) -> str:
+    items = outcome.get("items") or []
+    names: list[str] = []
+    for raw in items:
+        if isinstance(raw, dict):
+            name = str(raw.get("displayName") or raw.get("name") or "").strip()
+            if name:
+                names.append(name)
+    if not names:
+        return ""
+    if len(names) == 1:
+        return f"Ready to log {names[0]}."
+    if len(names) == 2:
+        return f"Ready to log {names[0]} and {names[1]}."
+    return f"Ready to log {', '.join(names[:-1])}, and {names[-1]}."
+
+
 def _factual_supplement(outcome: dict[str, Any]) -> str:
     return (
         summary_from_options(outcome)
         or clarify_question(outcome)
+        or confirm_log_line(outcome)
         or no_suggestion_line(outcome)
         or memory_line(outcome)
         or menu_line(outcome)
@@ -97,12 +126,9 @@ def _factual_supplement(outcome: dict[str, Any]) -> str:
 
 
 def format_message(*, draft: str, outcome: dict[str, Any]) -> str:
-    text = sanitize_assistant_message(draft, allow_empty=True)
-    supplement = _factual_supplement(outcome)
-    if text and supplement:
-        if supplement.strip() in text or text in supplement:
-            return text
-        return f"{text.rstrip()}\n\n{supplement}"
+    # Prefer the model's human prose. Never show tool/ResolvedItem dumps.
+    # Harness lines are fallback only when the draft is empty or was scrubbed.
+    text = "" if looks_like_structured_dump(draft) else sanitize_assistant_message(draft, allow_empty=True)
     if text:
         return text
-    return supplement
+    return _factual_supplement(outcome)

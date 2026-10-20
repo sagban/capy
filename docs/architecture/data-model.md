@@ -43,7 +43,9 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 
 ### LibraryItem
 - User custom **Meal / Recipe / Food**
-- `origin`: user | ai_generated
+- `origin`: user | aiGenerated (wire raw value on iOS)
+- `sourceFoodId?`, `servingGrams` (grams for the stored per-serving macros)
+- Capy confirm of `web`/`estimate` foods upserts here as AI-generated
 - Links to foods/grams or composite definition
 
 ### ExplicitMemory / Preferences

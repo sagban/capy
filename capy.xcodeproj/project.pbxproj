@@ -395,6 +395,7 @@
 				INFOPLIST_FILE = AppInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Capy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capy uses the camera to scan food barcodes.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Capy reaches the local Functions emulator while you develop on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Capy uses the microphone so you can say what you ate.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Capy turns your speech into text so you can log meals hands-free.";
@@ -527,6 +528,7 @@
 				INFOPLIST_FILE = AppInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Capy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capy uses the camera to scan food barcodes.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Capy reaches the local Functions emulator while you develop on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Capy uses the microphone so you can say what you ate.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Capy turns your speech into text so you can log meals hands-free.";
@@ -684,6 +686,7 @@
 				INFOPLIST_FILE = AppInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Capy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capy uses the camera to scan food barcodes.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Capy reaches the local Functions emulator while you develop on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Capy uses the microphone so you can say what you ate.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Capy turns your speech into text so you can log meals hands-free.";
@@ -727,6 +730,7 @@
 				INFOPLIST_FILE = AppInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Capy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capy uses the camera to scan food barcodes.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Capy reaches the local Functions emulator while you develop on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Capy uses the microphone so you can say what you ate.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Capy turns your speech into text so you can log meals hands-free.";
@@ -1056,6 +1060,7 @@
 				INFOPLIST_FILE = AppInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Capy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capy uses the camera to scan food barcodes.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Capy reaches the local Functions emulator while you develop on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Capy uses the microphone so you can say what you ate.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Capy turns your speech into text so you can log meals hands-free.";
@@ -1161,6 +1166,7 @@
 				INFOPLIST_FILE = AppInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Capy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capy uses the camera to scan food barcodes.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Capy reaches the local Functions emulator while you develop on this device.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Capy uses the microphone so you can say what you ate.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Capy turns your speech into text so you can log meals hands-free.";

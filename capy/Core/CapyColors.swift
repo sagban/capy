@@ -4,6 +4,8 @@ import SwiftUI
 /// Use these instead of ad-hoc hex in feature views.
 enum CapyColors {
     static let background = Color("CapyBackground")
+    /// Matches AppIcon canvas (`#141819`) for launch / splash only.
+    static let launchBackground = Color("CapyLaunchBackground")
     static let surface = Color("CapySurface")
     static let surfaceElevated = Color("CapySurfaceElevated")
     static let textPrimary = Color("CapyTextPrimary")
@@ -20,6 +22,7 @@ enum CapyColors {
 extension Color {
     enum capy {
         static let background = CapyColors.background
+        static let launchBackground = CapyColors.launchBackground
         static let surface = CapyColors.surface
         static let surfaceElevated = CapyColors.surfaceElevated
         static let textPrimary = CapyColors.textPrimary

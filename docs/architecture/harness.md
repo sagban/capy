@@ -8,6 +8,20 @@ The system prompt lives in [`functions/agent/llm/prompt.py`](../../functions/age
 
 `functions/` keeps the Cloud Function entry (`main.py`), the callable DTOs (`schemas.py`), and tracing. The agent is `functions/agent/`: **LLM** (`llm/`) + **harness** (`harness/`, including tools).
 
+Harness layout (capability-oriented):
+
+```text
+harness/
+  search/          # food_search, usda, catalog, library_match, open_food_facts
+  tools/
+    registry.py    # @tool wrappers
+    common.py      # outcome builders
+    jobs/          # diary.py, compose.py, run.py
+  resolve.py, portions.py, format.py, messaging.py, memory/, …
+```
+
+Import from `agent.harness.search.*` (no top-level shims).
+
 ## Graph
 
 ```text
@@ -21,7 +35,7 @@ llm --infra x2---> respond
 |------|------|-----|
 | prepare | `agent/turn.py` | Validate the request. Build the memory pack. Clear `calls`, `model_text`, `outcome`, and `response` so a checkpoint cannot leak the last turn. |
 | llm | `agent/llm/model.py` | One Gemini call with meal tools plus Google Search grounding. Bad-args retry is inside this step (max 2). |
-| environment | `agent/harness/tools/` | LangChain `@tool` registry. Pydantic `args_schema` plus `InjectedToolArg` for request context; Gemini declarations and argument checks are derived from the tools. |
+| environment | `agent/harness/tools/` | LangChain `@tool` registry. Pydantic `args_schema` plus `InjectedToolArg` for request context; Gemini declarations and argument checks are derived from the tools. Phoenix spans use the tool name(s) (e.g. `compose_suggestions`), not the graph node label. |
 | format | `agent/harness/format.py` | Uses the model's reply when present; appends a factual line from tool outcomes (suggestions, clarify, memory) when that adds numbers the user needs. No second model call. |
 | respond | `agent/turn.py` | `normalize_outcome()`. Infra failure is `warnings: ["agent_unavailable"]` and an empty message. |
 
@@ -44,10 +58,12 @@ Numbers in the pack are computed in Python (`meal_budget.py`), not by the meal m
 `agent/harness/resolve.py`, portions in `agent/harness/portions.py`.
 
 1. Queries: food query, brand + query, model aliases, singular. At most 5. No miss cache.
-2. `food_search.search_foods`. USDA search also asks for Survey (FNDDS). `high` commits. `medium` with 2 or more hits pauses with names in working memory. Otherwise the next query.
-3. No automatic web resolve in harness; misses become `clarify_food` (Manual Log). Web context is for the model's grounded reply, not silent resolve.
-4. Portion: explicit grams, or g/ml/oz/tsp/tbsp/cup at the `Units.swift` factors, or the food's own USDA/branded measures. Otherwise the reply asks how much, in text.
-5. The first item that still needs the user pauses the turn. `resolveQueue` holds resolved items, the pending draft, remaining drafts, and candidate labels for the model. The next **utterance** continues it. The whole turn stops at 45 seconds.
+2. If the draft includes grounded `portionMacros` for its quantity+unit (optional `citationUrl` / `servingGrams`) that passes Atwater checks, convert to per-100g in code, commit as `web` / `estimate`, and skip catalog search. Menu units (`slice`, `sandwich`, `oz`→`fl oz` at venues, etc.) use plate baselines when `servingGrams` is omitted; compose does not re-cap `web`/`estimate` portions with `suggestion_portion`.
+3. Else `food_search.search_foods` merges **strict** `libraryContext` matches (exact / near-title only — never “chicken” → “Sunday Chicken Feast”), then seed, then USDA (Survey/FNDDS). When `brandOrVenue` is set, USDA is skipped (seed + library only) so venue menus do not burn the turn deadline. `high` commits. `medium` with 2 or more hits pauses with names in working memory. Otherwise the next query.
+4. Phoenix tool spans record args plus `dropped` / `optionSources` / `resolvedSources` (not a bare `environment` label).
+5. Misses become `clarify_food` / dropped suggestions (Manual Log). Venue misses without citation use reason `venue_needs_citation`.
+6. Portion: explicit grams, or g/ml/oz/tsp/tbsp/cup at the `Units.swift` factors, or the food's own USDA/branded measures. Otherwise the reply asks how much, in text.
+7. The first item that still needs the user pauses the turn. `resolveQueue` holds resolved items, the pending draft, remaining drafts, and candidate labels for the model. The next **utterance** continues it. The whole turn stops at 45 seconds.
 
 Clarify options are **not** sent as UI chips. They stay in `workingMemory.resolveQueue` so the model can read them.
 

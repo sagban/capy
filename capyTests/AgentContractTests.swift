@@ -41,6 +41,68 @@ final class AgentContractTests: XCTestCase {
         XCTAssertNil(SourceBadge.title(for: "catalog"))
     }
 
+    func testAcceptedWebItemUpsertsAIGeneratedLibraryFood() throws {
+        let container = try ModelContainer(
+            for: Schema([capy.LibraryItem.self]),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let per100g = MacroTotals(calories: 280, proteinG: 12, carbsG: 20, fatG: 16)
+        let saved = capy.LibraryItem.upsertFromAcceptedAgentLine(
+            name: "Quiche",
+            foodId: "web_abc",
+            grams: 150,
+            per100g: per100g,
+            source: "web",
+            citationUrl: "https://toast.app",
+            portionLabel: "1 slice (150 g)",
+            in: context
+        )
+        XCTAssertNotNil(saved)
+        XCTAssertEqual(saved?.origin, .aiGenerated)
+        XCTAssertEqual(saved?.kind, .food)
+        XCTAssertEqual(saved?.sourceFoodId, "web_abc")
+        XCTAssertEqual(saved?.servingGrams ?? 0, 150, accuracy: 0.01)
+        XCTAssertEqual(saved?.calories ?? 0, 420, accuracy: 0.5)
+        XCTAssertEqual(saved?.agentServingGrams ?? 0, 150, accuracy: 0.01)
+
+        let again = capy.LibraryItem.upsertFromAcceptedAgentLine(
+            name: "Quiche Lorraine",
+            foodId: "web_abc",
+            grams: 160,
+            per100g: per100g,
+            source: "web",
+            citationUrl: nil,
+            portionLabel: "1 slice",
+            in: context
+        )
+        XCTAssertEqual(again?.uuidString, saved?.uuidString)
+        XCTAssertEqual(again?.name, "Quiche Lorraine")
+        let all = try context.fetch(FetchDescriptor<capy.LibraryItem>())
+        XCTAssertEqual(all.count, 1)
+    }
+
+    func testCatalogConfirmDoesNotEnterAILibrary() throws {
+        let container = try ModelContainer(
+            for: Schema([capy.LibraryItem.self]),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let saved = capy.LibraryItem.upsertFromAcceptedAgentLine(
+            name: "Egg",
+            foodId: "seed_egg",
+            grams: 100,
+            per100g: MacroTotals(calories: 155, proteinG: 13, carbsG: 1, fatG: 11),
+            source: "catalog",
+            citationUrl: nil,
+            portionLabel: "2 large",
+            in: context
+        )
+        XCTAssertNil(saved)
+        let all = try context.fetch(FetchDescriptor<capy.LibraryItem>())
+        XCTAssertTrue(all.isEmpty)
+    }
+
     func testDiaryItemsCarryEntryIdAndIndex() throws {
         let container = try ModelContainer(
             for: Schema([MealEntry.self, MealEntryItem.self]),

@@ -1,0 +1,17 @@
+{
+  "code": "3017620422003",
+  "status": 1,
+  "product": {
+    "product_name": "Nutella",
+    "brands": "Ferrero",
+    "serving_size": "15 g",
+    "serving_quantity": 15,
+    "serving_quantity_unit": "g",
+    "nutriments": {
+      "energy-kcal_100g": 539,
+      "proteins_100g": 6.3,
+      "carbohydrates_100g": 57.5,
+      "fat_100g": 30.9
+    }
+  }
+}

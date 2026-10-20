@@ -109,6 +109,12 @@ class ItemDraft(BaseModel):
     quantity: Optional[float] = None
     unit: Optional[str] = None
     aliases: list[str] = Field(default_factory=list, description="Other names to search.")
+    # Menu/label macros for this draft's quantity+unit (not per 100 g). Harness converts.
+    portionMacros: Optional[MacroTotals] = None
+    # Mass of one count/serving when unit is not g/ml/oz/cup (optional; default 100 g).
+    servingGrams: Optional[float] = None
+    citationUrl: Optional[str] = None
+    displayName: Optional[str] = None
 
 
 class ResolvedItem(BaseModel):
@@ -267,6 +273,20 @@ class MemorySnapshot(BaseModel):
     recentCorrections: list[RecentCorrection] = Field(default_factory=list)
 
 
+class LibraryItemRef(BaseModel):
+    """Compact user library row for resolve (client snapshot; not overfit as a catalog)."""
+
+    id: str
+    name: str
+    kind: str = "food"  # meal | recipe | food
+    calories: float = 0
+    proteinG: float = 0
+    carbsG: float = 0
+    fatG: float = 0
+    # Grams in one library serving (recipe weight or 100 default).
+    servingGrams: float = 100
+
+
 class InterpretMealRequest(BaseModel):
     utterance: str = ""
     timezone: str = "UTC"
@@ -277,6 +297,7 @@ class InterpretMealRequest(BaseModel):
     conversation: ConversationContext = Field(default_factory=ConversationContext)
     context: InterpretContext = Field(default_factory=InterpretContext)
     memorySnapshot: Optional[MemorySnapshot] = None
+    libraryContext: list[LibraryItemRef] = Field(default_factory=list)
 
 
 class FoodCandidate(BaseModel):
@@ -319,6 +340,23 @@ class FoodHit(BaseModel):
     per100g: MacroTotals
     family: str = ""
     measures: list[HouseholdMeasure] = Field(default_factory=list)
+
+
+class BarcodeLookupHit(BaseModel):
+    """Open Food Facts GTIN hit for Manual Log barcode scanner."""
+
+    found: Literal[True] = True
+    foodId: str
+    displayName: str
+    per100g: MacroTotals
+    source: str = "open_food_facts"
+    brand: Optional[str] = None
+    servingGrams: Optional[float] = None
+    servingLabel: Optional[str] = None
+
+
+class BarcodeLookupMiss(BaseModel):
+    found: Literal[False] = False
 
 
 def _unwrap_firebase_number(value: dict[str, Any]) -> Any | None:

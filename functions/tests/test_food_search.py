@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent.harness.food_search import rank_candidates, search_foods
+from agent.harness.search.food_search import rank_candidates, search_foods
 from schemas import FoodHit, MacroTotals, request_from_dict
 
 

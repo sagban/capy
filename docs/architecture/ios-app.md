@@ -22,21 +22,26 @@ Settings is **not** a tab. Use `NavigationStack` per tab; gear in `.toolbar` tra
 
 **Capy confirm → Food Log:** confirming a `confirm_log` with multiple foods creates **one diary row (`MealEntry`) per food**, each with a single item — not one multi-item meal card. Reply copy may still say “logged A and B”. Correction/delete paths still target one existing entry/item. Manual Log multi-ingredient plates are unchanged.
 
+**Capy confirm → Library:** accepted `web` / `estimate` (menu-cited) lines also upsert into Library as `kind=food`, `origin=aiGenerated`, keyed by `sourceFoodId` (= agent `foodId`). Stored macros are the confirmed portion; `servingGrams` is that portion weight so later `libraryContext` resolve stays consistent.
+
 ## Folder layout (target)
 
 ```text
 capy/
   App/                 # CapyApp, AppContainer, root routing
-  Core/                # Pure helpers (MacroMath, seed import, stores, verifier)
+  Domain/
+    MealCommit/        # Shared diary writes (Capy confirm + Manual Log + library upsert)
+  Core/                # Pure helpers (MacroMath, seed import, stores)
     Enums/             # Domain + wire enums (one type per file)
     Entity/            # Value structs (`MacroTotals`, `LibraryIngredientLine`, …)
     DTO/               # Codable request/response / queue payloads
-    UIComponents/      # Shared SwiftUI rows/badges (`FoodPickRow`, `FoodMacroBadgeRow`)
+    UIComponents/      # Shared SwiftUI rows/badges, loaders, motion helpers
   Persistence/         # SwiftData `@Model` types only (one type per file)
   Features/
     Auth/
     Onboarding/
-    Capy/              # Agentic screen
+    Capy/              # Chat UI + Confirm/ applier
+      Confirm/         # ConfirmLine, CapyConfirmApplier, sheet types
     FoodLog/
     Library/           # Sheets/views (editor, picker, portion)
     Settings/
@@ -44,12 +49,13 @@ capy/
   Resources/           # SeedFoods.json, GoldenCases.json
 ```
 
-Colors/materials live under `Core/` (`CapyColors`, `CapyChrome`). Enums → `Core/Enums/`, struct entities → `Core/Entity/`, Codable DTOs → `Core/DTO/`. `Persistence/` is SwiftData `@Model` types only.
+Colors/materials live under `Core/` (`CapyColors`, `CapyChrome`). Enums → `Core/Enums/`, struct entities → `Core/Entity/`, Codable DTOs → `Core/DTO/`. `Persistence/` is SwiftData `@Model` types only. Diary commits go through `Domain/MealCommit` (not feature views).
 
 ## Responsibilities
 
 | Module | Owns |
 |--------|------|
+| `Domain/MealCommit` | Insert/update/delete diary rows, enqueue sync, AI library upsert on confirm |
 | `Core` | Pure helpers, seed import, stores; unit-tested; no API keys |
 | `Core/Enums` | Shared enums (one type per file) |
 | `Core/Entity` | Value structs / snapshots (one type per file) |

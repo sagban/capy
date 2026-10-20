@@ -91,6 +91,7 @@ struct FoodLogTabView: View {
                 .listSectionSpacing(18)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.interactively)
+                .animation(.easeInOut(duration: 0.22), value: dayKey)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -165,6 +166,7 @@ struct FoodLogTabView: View {
                 }
                 .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 12, leading: pageInset, bottom: 12, trailing: pageInset))
+                .listRowBackground(Color.capy.surface)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button("Delete", role: .destructive) {
                         modelContext.delete(entry)
@@ -185,6 +187,7 @@ struct FoodLogTabView: View {
             }
             .buttonStyle(.plain)
             .listRowInsets(EdgeInsets(top: 14, leading: pageInset, bottom: 14, trailing: pageInset))
+            .listRowBackground(Color.capy.surface)
             .accessibilityLabel("Add to \(title)")
         } header: {
             Text(title)
@@ -197,12 +200,12 @@ struct FoodLogTabView: View {
     @ViewBuilder
     private func mealRow(_ entry: MealEntry) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            let names = entry.items.map { readableFoodName($0.name) }.filter { !$0.isEmpty }
+            let names = entry.items.map { ReadableFoodName.display($0.name) }.filter { !$0.isEmpty }
             Text(names.isEmpty ? (entry.originalUserText ?? "Meal") : names.joined(separator: ", "))
                 .font(.headline)
                 .foregroundStyle(Color.capy.textPrimary)
             ForEach(Array(entry.items.enumerated()), id: \.offset) { _, item in
-                Text("\(Int(item.grams)) g  \(readableFoodName(item.name))")
+                Text("\(Int(item.grams)) g  \(ReadableFoodName.display(item.name))")
                     .font(.caption)
                     .foregroundStyle(Color.capy.textSecondary)
             }

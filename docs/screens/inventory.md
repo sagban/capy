@@ -38,6 +38,16 @@ Locked IA: **TabView** — Food Log (default) / Capy / Library; **Settings** via
 | **States** | Empty day, loading, over-budget factual note |
 | **PRD** | FR-8 |
 
+### Manual Log — barcode scanner
+
+| | |
+|--|--|
+| **Purpose** | Scan a packaged-food GTIN → Open Food Facts → portion / log (same details sheet as catalog picks) |
+| **Entry** | Manual Log “Scan barcode” (next to Add custom food) |
+| **Exit** | Hit → save to Library (Foods) + Log food details; miss → Search or Add custom food; Cancel |
+| **States** | Camera permission, unsupported device, looking up, not found |
+| **PRD** | Supports FR-8 logging |
+
 ## Tab: Capy (AI)
 
 | | |
@@ -53,6 +63,7 @@ Locked IA: **TabView** — Food Log (default) / Capy / Library; **Settings** via
 1. **Activation:** ask → answer → bookkeep (confirm) → payback (budget / pick)
 2. **Correction:** “half the rice” → recompute → show delta
 3. **Suggest:** Log it / Swap it / Not this (Swap re-runs verified search)
+4. **Confirm → Library:** accepted menu-cited (`web` / `estimate`) foods land under Library → Foods → AI-generated
 
 ## Tab: Library
 

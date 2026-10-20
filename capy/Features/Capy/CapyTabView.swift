@@ -9,6 +9,7 @@ struct CapyTabView: View {
     @Query private var entries: [MealEntry]
     @Query private var settings: [AppSettings]
     @Query(sort: \MealType.sortOrder) private var mealTypes: [MealType]
+    @Query(sort: \LibraryItem.createdAt, order: .reverse) private var libraryItems: [LibraryItem]
 
     @State private var draft = ""
     @State private var messages: [ChatBubble] = []
@@ -20,6 +21,7 @@ struct CapyTabView: View {
     @State private var showDeleteConfirm = false
     @State private var pendingDelete: PendingDeleteContext?
     @State private var isSending = false
+    @State private var isLoadingThread = false
     @State private var lastUtterance = ""
     @State private var speech = SpeechInputController()
     @FocusState private var talkFocused: Bool
@@ -76,30 +78,31 @@ struct CapyTabView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
                             if hasMoreHistory || isLoadingOlder {
-                                HStack {
-                                    Spacer()
+                                Group {
                                     if isLoadingOlder {
-                                        ProgressView()
+                                        CapyInlineLoader(label: "Loading earlier…")
                                     } else {
                                         Text("Load earlier")
                                             .font(.caption)
                                             .foregroundStyle(Color.capy.textSecondary)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 8)
                                     }
-                                    Spacer()
                                 }
-                                .padding(.vertical, 8)
                                 .onAppear { Task { await loadOlderMessages() } }
                             }
-                            if messages.isEmpty { starterPrompts }
+                            if messages.isEmpty, !isLoadingThread { starterPrompts }
                             ForEach(messages) { message in
                                 chatBubble(message)
                                     .id(message.id)
+                                    .capyAppear()
                             }
                             if isSending {
-                                ProgressView()
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .accessibilityLabel("Capy is typing")
+                                HStack {
+                                    CapyTypingIndicator()
+                                    Spacer(minLength: 48)
+                                }
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         }
                         .padding(.horizontal)
@@ -117,12 +120,24 @@ struct CapyTabView: View {
                     .scrollDismissesKeyboard(.never)
                     .onChange(of: messages.count) { _, _ in
                         guard stickToBottom, let last = messages.last?.id else { return }
-                        withAnimation(.easeOut(duration: 0.2)) {
+                        withAnimation(.easeOut(duration: 0.22)) {
                             proxy.scrollTo(last, anchor: .bottom)
                         }
                     }
+                    .onChange(of: isSending) { _, sending in
+                        guard sending, stickToBottom else { return }
+                        withAnimation(.easeOut(duration: 0.22)) {
+                            proxy.scrollTo(messages.last?.id, anchor: .bottom)
+                        }
+                    }
+                }
+
+                if isLoadingThread {
+                    CapyThreadLoadingOverlay()
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: isLoadingThread)
+            .animation(.spring(response: 0.35, dampingFraction: 0.86), value: isSending)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 6) {
                     if let error = speech.errorMessage {
@@ -238,7 +253,7 @@ struct CapyTabView: View {
             Text("Log what you ate, or ask what fits your day.")
                 .font(.subheadline)
                 .foregroundStyle(Color.capy.textSecondary)
-            ForEach(Self.starters, id: \.self) { prompt in
+            ForEach(Array(Self.starters.enumerated()), id: \.element) { index, prompt in
                 Button {
                     draft = prompt
                     send()
@@ -254,9 +269,12 @@ struct CapyTabView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .capyAppear()
+                .animation(.spring(response: 0.4, dampingFraction: 0.86).delay(Double(index) * 0.05), value: messages.isEmpty)
             }
         }
         .padding(.top, 8)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     private func chatBubble(_ message: ChatBubble) -> some View {
@@ -305,8 +323,10 @@ struct CapyTabView: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 28))
                         .foregroundStyle(Color.capy.accent)
+                        .symbolEffect(.bounce, value: isSending)
                 }
                 .accessibilityLabel("Send")
+                .transition(.scale.combined(with: .opacity))
             } else {
                 Button {
                     dismissTalkKeyboard()
@@ -316,10 +336,15 @@ struct CapyTabView: View {
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(speech.isRecording ? Color.capy.budgetCalories : Color.capy.textPrimary)
                         .frame(width: 32, height: 32)
+                        .contentTransition(.symbolEffect(.replace))
+                        .capyRecordingPulse(speech.isRecording)
                 }
                 .accessibilityLabel(speech.isRecording ? "Stop listening" : "Speak to Capy")
+                .transition(.scale.combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: canSend)
+        .animation(.easeInOut(duration: 0.2), value: speech.isRecording)
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(Color.capy.surfaceElevated, in: Capsule())
@@ -332,7 +357,13 @@ struct CapyTabView: View {
                     lineWidth: speech.isRecording ? 1.5 : 1
                 )
         )
-        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
+        .shadow(
+            color: speech.isRecording
+                ? Color.capy.budgetCalories.opacity(0.22)
+                : Color.black.opacity(0.08),
+            radius: speech.isRecording ? 12 : 8,
+            y: 2
+        )
     }
 
     @MainActor
@@ -340,9 +371,13 @@ struct CapyTabView: View {
         guard !didLoadThread else { return }
         didLoadThread = true
         guard Auth.auth().currentUser != nil else { return }
+        isLoadingThread = true
+        defer { isLoadingThread = false }
         do {
             let page = try await CapyThreadService.fetchThread()
-            applyThreadPage(page, replacing: true)
+            withAnimation(.easeOut(duration: 0.25)) {
+                applyThreadPage(page, replacing: true)
+            }
         } catch {
             #if DEBUG
             print("[CapyTabView] get_thread failed: \(error)")
@@ -475,28 +510,37 @@ struct CapyTabView: View {
         guard !text.isEmpty, !isSending else { return }
         speech.stop()
         dismissTalkKeyboard()
-        messages.append(ChatBubble(role: .user, text: text))
         stickToBottom = true
         draft = ""
         lastUtterance = text
-        isSending = true
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            messages.append(ChatBubble(role: .user, text: text))
+            isSending = true
+        }
         Task { await interpret(utterance: text) }
     }
 
     private func retryLast() {
         guard !isSending else { return }
-        isSending = true
-        messages.removeAll { $0.role == .error }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            messages.removeAll { $0.role == .error }
+            isSending = true
+        }
         Task { await interpret(utterance: lastUtterance) }
     }
 
     @MainActor
     private func interpret(utterance: String) async {
-        defer { isSending = false }
+        defer {
+            withAnimation(.easeOut(duration: 0.2)) {
+                isSending = false
+            }
+        }
         await UserSyncService.shared.flushPending()
         let request = InterpretMealRequestDTO.serverContext(
             utterance: utterance,
-            dayKey: todayKey
+            dayKey: todayKey,
+            libraryContext: InterpretMealRequestDTO.librarySnapshot(from: libraryItems)
         )
         do {
             let response = try await AgentClient.shared.interpretMeal(request)
@@ -638,103 +682,19 @@ struct CapyTabView: View {
     }
 
     private func confirmPending() {
-        if pendingCorrectionOp == "remove", let line = pendingLines.first, let entryId = line.entryId {
-            if let entry = entries.first(where: { $0.uuid.uuidString == entryId }) {
-                let index = line.itemIndex ?? 0
-                if entry.items.indices.contains(index) {
-                    let item = entry.items[index]
-                    entry.items.remove(at: index)
-                    modelContext.delete(item)
-                }
-                if entry.items.isEmpty {
-                    modelContext.delete(entry)
-                } else {
-                    syncMealEntryToServer(entry)
-                }
-            }
-            finishConfirm(reply: "removed.")
-            return
-        }
-
-        if let line = pendingLines.first, let entryId = line.entryId,
-           let entry = entries.first(where: { $0.uuid.uuidString == entryId }) {
-            let index = line.itemIndex ?? 0
-            guard entry.items.indices.contains(index) else { return }
-            let item = entry.items[index]
-            let macros = line.macros
-            let oldGrams = item.grams
-            item.name = line.name
-            item.grams = line.grams
-            item.calories = macros.calories
-            item.proteinG = macros.proteinG
-            item.carbsG = macros.carbsG
-            item.fatG = macros.fatG
-            item.foodId = line.foodId
-            item.ingredientFamily = line.family
-            item.source = line.source
-            let left = MacroTotals.remaining(target: target, eaten: eaten)
-            syncMealEntryToServer(entry)
-            finishConfirm(reply: "updated — \(Int(macros.calories)) cal. \(Int(left.calories)) cal left.")
-            return
-        }
-
-        // One Food Log row per food (not one meal card with many lines).
-        let slot = pendingMealSlot.isEmpty ? nil : pendingMealSlot
-        var added = MacroTotals.zero
-        var names: [String] = []
-        for line in pendingLines {
-            let macros = line.macros
-            let item = MealEntryItem(
-                name: line.name,
-                grams: line.grams,
-                calories: macros.calories,
-                proteinG: macros.proteinG,
-                carbsG: macros.carbsG,
-                fatG: macros.fatG,
-                foodId: line.foodId,
-                ingredientFamily: line.family,
-                source: line.source
-            )
-            let entry = MealEntry(
-                dayKey: todayKey,
-                mealSlot: slot,
-                originalUserText: readableFoodName(line.name),
-                confirmed: true,
-                items: []
-            )
-            modelContext.insert(entry)
-            item.entry = entry
-            entry.items.append(item)
-            syncMealEntryToServer(entry)
-            added = added + macros
-            names.append(readableFoodName(line.name))
-        }
-        guard !names.isEmpty else { return }
-        let left = MacroTotals.remaining(
-            target: target,
-            eaten: eaten + added
-        )
-        let listed: String
-        if names.count <= 1 {
-            listed = names.first ?? "that"
-        } else if names.count == 2 {
-            listed = "\(names[0]) and \(names[1])"
-        } else {
-            listed = names.dropLast().joined(separator: ", ") + ", and " + (names.last ?? "")
-        }
         let level = settings.first?.assistanceLevel ?? .fullAssist
-        let reply: String
-        if level == .quiet {
-            reply = "logged \(listed). \(Int(left.calories)) left."
-        } else {
-            reply = "logged \(listed). \(Int(added.calories)) cal. \(Int(left.calories)) cal left."
-        }
-        finishConfirm(reply: reply)
-    }
-
-    private func syncMealEntryToServer(_ entry: MealEntry) {
-        try? modelContext.save()
-        UserSyncService.shared.enqueueLogMeal(entry)
+        guard let outcome = CapyConfirmApplier.applyConfirm(
+            lines: pendingLines,
+            correctionOp: pendingCorrectionOp,
+            mealSlot: pendingMealSlot,
+            dayKey: todayKey,
+            entries: Array(entries),
+            target: target,
+            eaten: eaten,
+            assistance: level,
+            in: modelContext
+        ) else { return }
+        finishConfirm(reply: outcome.reply)
     }
 
     private func finishConfirm(reply: String) {
@@ -752,16 +712,12 @@ struct CapyTabView: View {
             showDeleteConfirm = false
             return
         }
-        if let entry = entries.first(where: { $0.uuid.uuidString == pending.entryId }) {
-            for item in entry.items {
-                modelContext.delete(item)
-            }
-            modelContext.delete(entry)
-            try? modelContext.save()
-        }
-        UserSyncService.shared.enqueueDeleteMeal(entryId: pending.entryId, dayKey: pending.dayKey)
-        let listed = readableFoodName(pending.label)
-        finishDeleteConfirm(reply: "deleted \(listed).")
+        let outcome = CapyConfirmApplier.applyDelete(
+            pending: pending,
+            entries: Array(entries),
+            in: modelContext
+        )
+        finishDeleteConfirm(reply: outcome.reply)
     }
 
     private func cancelDeletePending() {
@@ -776,52 +732,5 @@ struct CapyTabView: View {
         Task {
             try? await CapyThreadService.appendAssistant(reply, clearWorkingMemory: true)
         }
-    }
-}
-
-private struct PendingDeleteContext: Equatable {
-    var entryId: String
-    var dayKey: String
-    var label: String
-}
-
-func readableFoodName(_ raw: String) -> String {
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    let head: String
-    if let range = trimmed.range(of: " — ") {
-        head = String(trimmed[..<range.lowerBound])
-    } else if let range = trimmed.range(of: " - ") {
-        head = String(trimmed[..<range.lowerBound])
-    } else {
-        head = trimmed
-    }
-    let letters = head.filter(\.isLetter)
-    guard !letters.isEmpty, letters.allSatisfy(\.isUppercase) else { return head }
-    return head.localizedLowercase.localizedCapitalized
-}
-
-struct ChatBubble: Identifiable {
-    enum Role { case capy, user, error }
-
-    let serverMessageId: String
-    let role: Role
-    let text: String
-    var manualLog: Bool = false
-    var freeTextGrams: Bool = false
-
-    var id: String { serverMessageId }
-
-    init(
-        serverMessageId: String = UUID().uuidString,
-        role: Role,
-        text: String,
-        manualLog: Bool = false,
-        freeTextGrams: Bool = false
-    ) {
-        self.serverMessageId = serverMessageId
-        self.role = role
-        self.text = text
-        self.manualLog = manualLog
-        self.freeTextGrams = freeTextGrams
     }
 }

@@ -35,8 +35,12 @@ We are **not** training LTR yet (no click/log labels). We use an explicit, testa
 - USDA pool (unranked fetch): `functions/usda.py` → `search_usda_pool`
 - Evals: `functions/tests/test_food_search_evals.py` + `fixtures/food_search_evals.json`
 
+## Barcode path (exact GTIN)
+
+Manual Log barcode scanner → callable `lookup_barcode` → **Open Food Facts** exact GTIN (UPC-A / EAN-13 variants). Hit returns catalog-style `per100g` + optional serving; miss / incomplete macros → `{ found: false }` (no invent). Not mixed into text search ranking.
+
 ## Next (not v1)
 
 - Offline LTR once we have confirm/reject labels from chat
 - Embedding similarity for vocabulary gap (restaurant slang ↔ catalog)
-- Barcode path (exact GTIN only)
+- USDA FDC `gtinUpc` as a secondary barcode pool

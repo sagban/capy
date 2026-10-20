@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "CapyLaunch.png",
+      "filename" : "CapyLaunchIcon.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "CapyLaunch@2x.png",
+      "filename" : "CapyLaunchIcon@2x.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "CapyLaunch@3x.png",
+      "filename" : "CapyLaunchIcon@3x.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

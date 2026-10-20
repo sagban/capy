@@ -1,0 +1,11 @@
+{
+  "code": "0000000000000",
+  "status": 1,
+  "product": {
+    "product_name": "Mystery Snack",
+    "brands": "Acme",
+    "nutriments": {
+      "salt_100g": 1.2
+    }
+  }
+}

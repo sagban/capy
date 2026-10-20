@@ -19,17 +19,17 @@ def clear_overrides() -> None:
     _overrides.clear()
 
 
-def _default_search(req: InterpretMealRequest) -> Callable[[str], dict[str, Any]]:
-    from agent.harness.food_search import search_foods
+def _default_search(req: InterpretMealRequest) -> Callable[..., dict[str, Any]]:
+    from agent.harness.search.food_search import search_foods
 
-    def search(query: str) -> dict[str, Any]:
-        return search_foods(req, query)
+    def search(query: str, *, include_usda: bool = True) -> dict[str, Any]:
+        return search_foods(req, query, include_usda=include_usda)
 
     return search
 
 
 def _default_fetch(food_id: str) -> list[Any]:
-    from agent.harness.usda import fetch_fdc_measures
+    from agent.harness.search.usda import fetch_fdc_measures
 
     return fetch_fdc_measures(food_id)
 

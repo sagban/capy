@@ -12,9 +12,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from agent.harness.catalog import search_seed
+from agent.harness.search.catalog import search_seed
+from agent.harness.search.library_match import match_library
+from agent.harness.search.usda import search_usda_pool
 from schemas import FoodHit, InterpretMealRequest
-from agent.harness.usda import search_usda_pool
 
 QueryBreadth = Literal["broad", "narrow"]
 
@@ -332,6 +333,9 @@ def _item_quality(hit: FoodHit, breadth: QueryBreadth, *, personal: float = 0.0)
         q += 4.0
     if breadth == "narrow" and hit.source == "seed":
         q += 1.0
+    # Library only enters the pool on a strict name match — slight trust nudge, not a takeover.
+    if hit.source == "library":
+        q += 5.0
     return q
 
 
@@ -484,7 +488,13 @@ def _confidence(ranked: list[RankedHit]) -> tuple[str, bool, str]:
     return confidence_for(ranked, query="")
 
 
-def search_foods(req: InterpretMealRequest, query: str, limit: int = 8) -> dict[str, Any]:
+def search_foods(
+    req: InterpretMealRequest,
+    query: str,
+    limit: int = 8,
+    *,
+    include_usda: bool = True,
+) -> dict[str, Any]:
     q = (query or "").strip()
     if not q:
         return {
@@ -505,10 +515,14 @@ def search_foods(req: InterpretMealRequest, query: str, limit: int = 8) -> dict[
     usda_hits: list[FoodHit] = []
     for variant in variants:
         seed_hits.extend(search_seed(variant, limit=max(12, limit)))
-        usda_hits.extend(search_usda_pool(variant, limit=max(30, limit * 4)))
+        if include_usda:
+            usda_hits.extend(search_usda_pool(variant, limit=max(30, limit * 4)))
+
+    library_hits = match_library(q, req.libraryContext or [], limit=3)
 
     merged: dict[str, FoodHit] = {}
-    for h in seed_hits + usda_hits:
+    # Library first so an exact personal title wins the id slot; ranking still decides order.
+    for h in library_hits + seed_hits + usda_hits:
         if h.foodId not in merged:
             merged[h.foodId] = h
 
@@ -522,6 +536,14 @@ def search_foods(req: InterpretMealRequest, query: str, limit: int = 8) -> dict[
         ranked = [r for r in ranked if r.hit.family.lower() not in blocked]
 
     confidence, suggest_web, reason = confidence_for(ranked, q)
+    # Exact library title → high confidence (strict matcher already gated entry).
+    if (
+        ranked
+        and ranked[0].hit.source == "library"
+        and _norm_eq(q, ranked[0].hit.displayName)
+    ):
+        confidence, suggest_web, reason = "high", False, "library_exact"
+
     top = ranked[:limit]
     packed = [
         {
@@ -539,8 +561,10 @@ def search_foods(req: InterpretMealRequest, query: str, limit: int = 8) -> dict[
     ]
 
     results = [] if confidence == "low" else packed
-    cache = "hit" if seed_hits else ("usda" if usda_hits else "miss")
+    cache = "hit" if seed_hits or library_hits else ("usda" if usda_hits else "miss")
     sources: list[str] = []
+    if library_hits:
+        sources.append("library")
     if seed_hits:
         sources.append("seed")
     if any(h.source == "usda_branded" for h in usda_hits):
@@ -559,3 +583,9 @@ def search_foods(req: InterpretMealRequest, query: str, limit: int = 8) -> dict[
         "sources": sources,
         "queryBreadth": breadth,
     }
+
+
+def _norm_eq(a: str, b: str) -> bool:
+    return re.sub(r"\s+", " ", (a or "").strip().lower()) == re.sub(
+        r"\s+", " ", (b or "").strip().lower()
+    )

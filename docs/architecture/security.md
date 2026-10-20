@@ -29,8 +29,8 @@ Local pattern: `.env` (gitignored) for emulator; see [../runbooks/local-dev.md](
 
 ## App Store privacy (draft)
 
-Collect: account identifiers (Firebase uid), email (from Apple/Google as provided), food log content (on-device; server sees utterances for interpretation).
+Collect: account identifiers (Firebase uid), email (from Apple/Google as provided), food log content (on-device; server sees utterances for interpretation). Camera is used on-device for barcode scanning only; scanned GTINs are sent to the authenticated `lookup_barcode` callable (Open Food Facts). Photos are not stored.
 
-Do not collect: HealthKit (until FR-10), precise location, contacts.
+Do not collect: HealthKit (until FR-10), precise location, contacts, photo library.
 
 Nutrition is not medical advice; Cappy abstains from medical/ED/pregnancy coaching (product copy boundary).

@@ -60,6 +60,9 @@ def load_interpret_request(uid: str, raw: dict[str, Any]) -> InterpretMealReques
     }
     if raw.get("memorySnapshot") is not None:
         base["memorySnapshot"] = raw.get("memorySnapshot")
+    # Client snapshot of local SwiftData library (not stored in Firestore yet).
+    if isinstance(raw.get("libraryContext"), list):
+        base["libraryContext"] = raw.get("libraryContext")
     return InterpretMealRequest.model_validate(base)
 
 

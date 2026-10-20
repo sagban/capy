@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 
-from agent.harness.catalog import get_food
-from agent.harness.food_search import search_foods
+from agent.harness.search.catalog import get_food
+from agent.harness.search.food_search import search_foods
 from agent.graph import run_interpret
 from agent.harness.messaging import GRACEFUL_FAILURE, sanitize_assistant_message
 from schemas import request_from_dict

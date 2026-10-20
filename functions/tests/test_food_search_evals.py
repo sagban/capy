@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from agent.harness.food_search import (
+from agent.harness.search.food_search import (
     confidence_for,
     query_breadth,
     rank_candidates,
@@ -108,11 +108,11 @@ def test_food_search_eval_case(case: dict, monkeypatch: pytest.MonkeyPatch):
 
     # Patch retrieval so evals stay offline and deterministic.
     monkeypatch.setattr(
-        "agent.harness.food_search.search_seed",
+        "agent.harness.search.food_search.search_seed",
         lambda q, limit=12: [h for h in pool if h.source == "seed"][:limit],
     )
     monkeypatch.setattr(
-        "agent.harness.food_search.search_usda_pool",
+        "agent.harness.search.food_search.search_usda_pool",
         lambda q, limit=40: [h for h in pool if h.source != "seed"][:limit],
     )
 

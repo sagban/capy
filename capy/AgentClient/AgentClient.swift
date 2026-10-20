@@ -75,6 +75,24 @@ actor AgentClient {
         return try Self.decodeDictionary(result.data)
     }
 
+    /// Exact GTIN → Open Food Facts via `lookup_barcode`.
+    func lookupBarcode(gtin: String) async throws -> BarcodeLookupResponseDTO {
+        let digits = gtin.filter(\.isNumber)
+        guard digits.count >= 8 else {
+            return BarcodeLookupResponseDTO(found: false)
+        }
+        let dict = try await callCallable("lookup_barcode", payload: ["gtin": digits])
+        let data = try JSONSerialization.data(withJSONObject: dict)
+        do {
+            return try decoder.decode(BarcodeLookupResponseDTO.self, from: data)
+        } catch {
+            #if DEBUG
+            print("[AgentClient] lookup_barcode decode failed: \(error)")
+            #endif
+            throw AgentClientError.unavailable
+        }
+    }
+
     static func stripNulls(_ dict: [String: Any]) -> [String: Any] {
         var out: [String: Any] = [:]
         for (key, nested) in dict {

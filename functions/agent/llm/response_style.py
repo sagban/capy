@@ -17,16 +17,16 @@ _STYLE_TO_TEMPERATURE: Final[dict[str, float]] = {
 # One block per style — only the active style is injected into the system prompt per turn.
 _STYLE_INSTRUCTIONS: Final[dict[str, str]] = {
     "precise": (
-        "Be literal and tight. State facts from the pack and tools; avoid hedging or "
-        "extra commentary. Prefer the shortest correct answer."
+        "Be literal and clear. State facts from the pack and tools; skip fluff, but still "
+        "use full sentences a person can follow. Never dump tool or system output into chat."
     ),
     "balanced": (
-        "Stay grounded in the pack and tools, but you may add a short helpful aside "
-        "(e.g. what fits next) when it clearly helps. Keep it concise."
+        "Stay grounded in the pack and tools. Prefer a warm, complete reply: what you did, "
+        "how it fits what's left, and what's next. Never dump tool or system output into chat."
     ),
     "creative": (
-        "Stay accurate, but you may use warmer, more varied phrasing and light "
-        "personality. Do not pad or invent nutrition facts."
+        "Stay accurate, with warmer varied phrasing and light personality. Be communicative "
+        "without padding or inventing nutrition facts. Never dump tool or system output into chat."
     ),
 }
 

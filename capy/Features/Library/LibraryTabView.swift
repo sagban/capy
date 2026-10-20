@@ -40,12 +40,14 @@ struct LibraryTabView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .listRowBackground(Color.capy.surface)
                     }
 
                     Section("AI-generated") {
                         if aiItems.isEmpty {
                             Text(searchText.isEmpty ? "none yet" : "no matches")
                                 .foregroundStyle(Color.capy.textSecondary)
+                                .listRowBackground(Color.capy.surface)
                         } else {
                             ForEach(aiItems) { item in
                                 Button {
@@ -53,6 +55,7 @@ struct LibraryTabView: View {
                                 } label: {
                                     libraryRow(item)
                                 }
+                                .listRowBackground(Color.capy.surface)
                             }
                             .onDelete { delete(aiItems, at: $0) }
                         }
@@ -66,6 +69,7 @@ struct LibraryTabView: View {
                                 : "no matches"
                             )
                             .foregroundStyle(Color.capy.textSecondary)
+                            .listRowBackground(Color.capy.surface)
                         } else {
                             ForEach(userItems) { item in
                                 Button {
@@ -73,12 +77,15 @@ struct LibraryTabView: View {
                                 } label: {
                                     libraryRow(item)
                                 }
+                                .listRowBackground(Color.capy.surface)
                             }
                             .onDelete { delete(userItems, at: $0) }
                         }
                     }
                 }
                 .scrollContentBackground(.hidden)
+                .animation(.easeInOut(duration: 0.2), value: kindFilter)
+                .animation(.easeInOut(duration: 0.2), value: searchText)
             }
             .navigationTitle("Library")
             .searchable(text: $searchText, prompt: "Search library")

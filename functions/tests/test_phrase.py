@@ -1,4 +1,41 @@
 from agent.harness.format import clarify_question, format_message
+from agent.harness.messaging import looks_like_structured_dump, sanitize_assistant_message
+
+
+def test_structured_dump_is_not_shown_to_user():
+    dump = "{'foodId': 'est_abc', 'displayName': 'Quiche', 'per100g': {'calories': 280}}"
+    assert looks_like_structured_dump(dump)
+    text = format_message(
+        draft=dump,
+        outcome={
+            "items": [
+                {"displayName": "Quiche", "grams": 150},
+                {"displayName": "Iced Latte", "grams": 473},
+            ]
+        },
+    )
+    assert "foodId" not in text
+    assert "per100g" not in text
+    assert "Ready to log Quiche and Iced Latte." == text
+
+
+def test_sanitize_drops_structured_dump():
+    assert sanitize_assistant_message("{'foodId': 'x', 'per100g': {}}") != "{'foodId': 'x', 'per100g': {}}"
+    assert "foodId" not in sanitize_assistant_message("{'foodId': 'x', 'per100g': {}}")
+
+
+def test_human_prose_is_not_followed_by_harness_line():
+    text = format_message(
+        draft="Staged a slice of quiche and an iced latte from First Cup — confirm when you're ready.",
+        outcome={
+            "items": [
+                {"displayName": "Quiche", "grams": 150},
+                {"displayName": "Iced Latte", "grams": 473},
+            ]
+        },
+    )
+    assert "Staged a slice of quiche" in text
+    assert "Ready to log" not in text
 
 
 def test_memory_note_without_model_text():
@@ -15,6 +52,17 @@ def test_no_surviving_suggestion_still_has_a_sentence():
         outcome={"reason": "no suggestion survived", "dropped": ["opt: unresolved"]},
     )
     assert "couldn't source" in text.lower()
+
+
+def test_venue_needs_citation_explains_menu_nutrition():
+    text = format_message(
+        draft="",
+        outcome={
+            "reason": "no suggestion survived",
+            "dropped": ["Latte: unresolved (venue_needs_citation)"],
+        },
+    )
+    assert "menu nutrition" in text.lower()
 
 
 def test_empty_suggestion_draft_still_explains_the_options():

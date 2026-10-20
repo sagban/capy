@@ -32,11 +32,13 @@ struct RootView: View {
             }
         }
         .environment(\.unitPreferences, unitPreferences)
+        .capyTypography()
         .task {
-            try? await Task.sleep(for: .milliseconds(900))
+            // Brief beat so the first frame isn’t a hard cut — don’t hold the UI hostage.
+            try? await Task.sleep(for: .milliseconds(280))
             splashMinimumElapsed = true
         }
-        .animation(.easeInOut(duration: 0.35), value: showSplash)
+        .animation(.easeInOut(duration: 0.22), value: showSplash)
         .animation(.easeInOut(duration: 0.2), value: auth.isSignedIn)
         .animation(.easeInOut(duration: 0.2), value: onboardingCompleted)
     }

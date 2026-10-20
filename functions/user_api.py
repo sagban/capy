@@ -15,6 +15,8 @@ from agent.thread_store import (
     normalize_thread_id,
     note_day_rollover,
 )
+from agent.harness.search.open_food_facts import lookup_barcode as off_lookup_barcode
+from agent.harness.search.open_food_facts import normalize_gtin
 from agent.user_store import delete_entry as store_delete_entry
 from agent.user_store import log_meal as store_log_meal
 from agent.user_store import patch_profile as store_patch_profile
@@ -172,3 +174,26 @@ def handle_patch_thread(req: https_fn.CallableRequest) -> dict[str, Any]:
     uid = _uid(req)
     raw = req.data if isinstance(req.data, dict) else {}
     return patch_thread_for_uid(uid, raw)
+
+
+def lookup_barcode_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
+    gtin = normalize_gtin(str(raw.get("gtin") or ""))
+    if len(gtin) < 8:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="gtin must be at least 8 digits.",
+        )
+    result = off_lookup_barcode(gtin)
+    logger.info(
+        "lookup_barcode uid=%s gtin=%s found=%s",
+        uid,
+        gtin,
+        bool(result.get("found")),
+    )
+    return result
+
+
+def handle_lookup_barcode(req: https_fn.CallableRequest) -> dict[str, Any]:
+    uid = _uid(req)
+    raw = req.data if isinstance(req.data, dict) else {}
+    return lookup_barcode_for_uid(uid, raw)

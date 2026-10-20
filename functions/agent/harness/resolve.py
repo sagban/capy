@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from agent.harness.checks import portion_macros_ok
 from agent.harness.portions import resolve_portion
 from schemas import (
     ClarifyOption,
@@ -19,7 +20,7 @@ from schemas import (
     ResolveQueue,
 )
 
-CANONICAL_SOURCES = {"catalog", "usda", "usda_branded", "web", "estimate", "diary"}
+CANONICAL_SOURCES = {"catalog", "usda", "usda_branded", "web", "estimate", "diary", "library"}
 
 
 def canonical_source(source: str | None) -> str:
@@ -217,10 +218,125 @@ def _load_measures(hit: dict[str, Any], fetch_measures: Callable[[str], list[Any
     return _measures(fetched)
 
 
+def _call_search(
+    search: Callable[..., dict[str, Any]],
+    query: str,
+    *,
+    include_usda: bool,
+) -> dict[str, Any]:
+    try:
+        return search(query, include_usda=include_usda) or {}
+    except TypeError:
+        return search(query) or {}
+
+
+# Typical plate weight when the menu unit isn't mass/volume (model omits servingGrams).
+_MENU_UNIT_GRAMS = {
+    "slice": 150.0,
+    "piece": 120.0,
+    "sandwich": 180.0,
+    "order": 200.0,
+    "bowl": 350.0,
+    "plate": 400.0,
+    "scoop": 100.0,
+    "cookie": 40.0,
+    "muffin": 110.0,
+    "bagel": 100.0,
+    "wrap": 200.0,
+}
+
+
+def _cited_unit_for_portion(draft: ItemDraft) -> str:
+    """Menu 'oz' drinks are fluid ounces; weight oz only when clearly mass."""
+    raw = (draft.unit or "").strip().lower()
+    if raw in {"oz", "ounce", "ounces"} and (
+        draft.portionMacros is not None or (draft.brandOrVenue or "").strip()
+    ):
+        return "fl oz"
+    return draft.unit or "serving"
+
+
+def _cited_portion_grams(draft: ItemDraft) -> Optional[tuple[float, str | None]]:
+    """Grams for the draft amount when citing menu portion macros.
+
+    Mass/volume units use Swift-parity factors. Menu units (sandwich, slice, …)
+    use servingGrams or a typical plate weight so cited macros are never dropped.
+    """
+    qty = float(draft.quantity or 0)
+    if qty <= 0:
+        return None
+    unit_key = re.sub(r"[^a-z]", "", (_cited_unit_for_portion(draft) or "").lower())
+    default_serving = _MENU_UNIT_GRAMS.get(unit_key)
+    if default_serving is None:
+        # Bare "serving" at a cafe is a plate, not a 100 g lab sample.
+        default_serving = 180.0 if (draft.brandOrVenue or "").strip() else 100.0
+    serving_g = float(draft.servingGrams) if draft.servingGrams and draft.servingGrams > 0 else default_serving
+    unit_for_resolve = _cited_unit_for_portion(draft)
+    measures = [
+        HouseholdMeasure(id="serving", label=f"1 {unit_for_resolve}".strip(), grams=serving_g),
+    ]
+    decision = resolve_portion(qty, unit_for_resolve, measures)
+    if decision.grams is not None and decision.grams > 0:
+        return float(decision.grams), decision.label
+    grams = qty * serving_g
+    unit = (unit_for_resolve or "serving").strip() or "serving"
+    qty_label = str(int(qty)) if abs(qty - round(qty)) < 0.05 else f"{qty:g}"
+    g_label = str(int(round(grams))) if abs(grams - round(grams)) < 0.05 else f"{grams:.1f}"
+    return grams, f"{qty_label} {unit} ({g_label} g)"
+
+
+def _try_cited_macros(draft: ItemDraft) -> Optional[ItemResult]:
+    """Commit Google Search–grounded menu portion macros (web/estimate) without USDA."""
+    portion = draft.portionMacros
+    if portion is None:
+        return None
+    if not portion_macros_ok(portion.calories, portion.proteinG, portion.carbsG, portion.fatG):
+        return None
+    if draft.quantity is None or draft.quantity <= 0 or not (draft.unit or "").strip():
+        return None
+    weighed = _cited_portion_grams(draft)
+    if weighed is None:
+        return None
+    grams, label = weighed
+    factor = 100.0 / grams
+    per = MacroTotals(
+        calories=round(portion.calories * factor, 4),
+        proteinG=round(portion.proteinG * factor, 4),
+        carbsG=round(portion.carbsG * factor, 4),
+        fatG=round(portion.fatG * factor, 4),
+    )
+    citation = (draft.citationUrl or "").strip() or None
+    source = "web" if citation else "estimate"
+    name = (draft.displayName or draft.foodQuery or "").strip()
+    if not name:
+        return None
+    key = f"{draft.brandOrVenue or ''}|{name}|{portion.calories}|{portion.proteinG}|{grams}"
+    prefix = "web_" if source == "web" else "est_"
+    # One measure = the full cited portion (avoid suggestion_portion treating oz as 28 g servings).
+    unit_label = (_cited_unit_for_portion(draft) or "serving").strip()
+    qty = float(draft.quantity or 1)
+    measure_label = f"1 {unit_label}" if abs(qty - 1) < 0.05 else f"{qty:g} {unit_label}"
+    committed = CommittedFood(
+        foodId=_stable_id(prefix, key),
+        displayName=name,
+        per100g=per,
+        source=source,
+        citationUrl=citation,
+        family="",
+        measures=[HouseholdMeasure(id="portion", label=measure_label, grams=round(grams, 2))],
+    )
+    return ItemResult(
+        draft=draft,
+        status="resolved",
+        item=_resolved_from_committed(committed, grams, label),
+        committed=committed,
+    )
+
+
 def resolve_one(
     draft: ItemDraft,
     *,
-    search: Callable[[str], dict[str, Any]],
+    search: Callable[..., dict[str, Any]],
     fetch_measures: Callable[[str], list[Any]],
     clock: Callable[[], float],
     deadline: float,
@@ -228,13 +344,21 @@ def resolve_one(
     if clock() > deadline:
         return ItemResult(draft=draft, status="clarify_food", reason="deadline", manual_log=True, free_text=True)
 
+    cited = _try_cited_macros(draft)
+    if cited is not None:
+        return cited
+
+    venue = (draft.brandOrVenue or "").strip()
+    # Venue foods rarely exist in USDA — skip the pool (avoids ~45s thrash) unless cited.
+    include_usda = not bool(venue)
+
     queries = query_list(draft) or [draft.foodQuery]
     last_medium: list[dict[str, Any]] = []
     for query in queries:
         if clock() > deadline:
             return ItemResult(draft=draft, status="clarify_food", reason="deadline", manual_log=True, free_text=True)
         try:
-            found = search(query) or {}
+            found = _call_search(search, query, include_usda=include_usda)
         except Exception:  # noqa: BLE001
             found = {}
         confidence = str(found.get("confidence") or "none")
@@ -271,10 +395,11 @@ def resolve_one(
     if clock() > deadline:
         return ItemResult(draft=draft, status="clarify_food", reason="deadline", manual_log=True, free_text=True)
 
+    reason = "venue_needs_citation" if venue else "not_found"
     return ItemResult(
         draft=draft,
         status="clarify_food",
-        reason="not_found",
+        reason=reason,
         manual_log=True,
         free_text=True,
     )
@@ -312,7 +437,7 @@ def pick_for_suggestion(result: ItemResult) -> Optional[ResolvedItem]:
 def resolve_many(
     drafts: list[ItemDraft | dict[str, Any]],
     *,
-    search: Callable[[str], dict[str, Any]],
+    search: Callable[..., dict[str, Any]],
     fetch_measures: Callable[[str], list[Any]],
     clock: Callable[[], float],
     deadline: float,

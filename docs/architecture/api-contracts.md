@@ -68,9 +68,40 @@ Returns `{ "dayKey", "entryId" }`. Replays with the same `clientMutationId` retu
 
 Soft-deletes `users/{uid}/days/{dayKey}/entries/{entryId}` (`deleted: true`, `confirmed: false`). Returns `{ "dayKey", "entryId" }`. Idempotent via `clientMutationId` like `log_meal`.
 
+### `lookup_barcode` (callable)
+
+Exact GTIN → Open Food Facts product for the Manual Log barcode scanner. Server looks up OFF; iOS scales `per100g` to the chosen portion (same as catalog hits). Incomplete nutrition → miss (never invent macros).
+
+```json
+{ "gtin": "3017620422003" }
+```
+
+Hit:
+
+```json
+{
+  "found": true,
+  "foodId": "off_3017620422003",
+  "displayName": "Nutella",
+  "brand": "Ferrero",
+  "per100g": { "calories": 539, "proteinG": 6.3, "carbsG": 57.5, "fatG": 30.9 },
+  "servingGrams": 15,
+  "servingLabel": "15 g",
+  "source": "open_food_facts"
+}
+```
+
+Miss / unusable product:
+
+```json
+{ "found": false }
+```
+
+`servingGrams` / `servingLabel` are optional when OFF has no parseable serving. `gtin` must be at least 8 digits (non-digits stripped). UPC-A ↔ EAN-13 leading-zero variants are tried.
+
 ### `interpretMeal` server context
 
-Set `"useServerContext": true` on the interpret request to build diary/profile/thread from Firestore instead of inline snapshots. iOS encodes only `utterance`, `timezone`, `dayKey`, optional `threadId`, and `useServerContext`. Conversation is stored at `users/{uid}/threads/{threadId}`; `interpret_meal` returns an updated `conversation` on success. Omit or `false` to keep the legacy client snapshot.
+Set `"useServerContext": true` on the interpret request to build diary/profile/thread from Firestore instead of inline snapshots. iOS encodes `utterance`, `timezone`, `dayKey`, optional `threadId`, `useServerContext`, and a compact `libraryContext` snapshot (local SwiftData library for strict title resolve). Conversation is stored at `users/{uid}/threads/{threadId}`; `interpret_meal` returns an updated `conversation` on success. Omit or `false` to keep the legacy client snapshot.
 
 ## `interpretMeal` (primary)
 
@@ -197,7 +228,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `confirm_delete` payload: `entryId`, `dayKey`, optional `reason` (label for the confirm sheet). Client confirms, then calls `delete_meal` to soft-delete in Firestore.
 
-`assistantMessage` may be empty when the confirm sheet carries the turn. It is model or harness-authored chat copy (plus optional factual supplements from tool outcomes); structured fields (`pendingAction`, `candidates`, `suggestionOptions`) are validated separately and are not regex-scrubbed in prose. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
+`assistantMessage` may be empty when the confirm sheet carries the turn. Prefer the model's human chat prose; if that draft is empty or is a tool/ResolvedItem dump, the harness drops the dump and falls back to a short factual line (e.g. confirm_log item names or suggestion totals). Structured fields (`pendingAction`, `candidates`, `suggestionOptions`) are validated separately and never shown as chat. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
 
 `memoryProposals.action`: `add` | `update` | `delete`. The client applies them. There is no `confirm_memory` pause.
 
@@ -233,8 +264,8 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 | Tool | Effect |
 |------|--------|
-| `new_entry` | Stage a new meal entry for HITL `confirm_log`: resolve `items`, edit with `ops`, or start from `optionId` (stored suggestion). Catalog/USDA search and portions run in code. |
-| `compose_suggestions` | Non-blocking chat suggestions. Optional `appetite` (`light` \| `normal` \| `hearty`) scales the guide; optional `budget` sets an explicit ceiling. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. |
+| `new_entry` | Stage a new meal entry for HITL `confirm_log`: resolve `items`, edit with `ops`, or start from `optionId` (stored suggestion). Catalog/USDA search and portions run in code; optional item `portionMacros` + `citationUrl` (menu macros for that quantity+unit) commits as `web`/`estimate` when Atwater checks pass. |
+| `compose_suggestions` | Non-blocking chat suggestions. Optional `appetite` (`light` \| `normal` \| `hearty`) scales the guide; optional `budget` sets an explicit ceiling. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. Restaurant drafts should set `venue`/`brandOrVenue` and pass cited `portionMacros` (USDA is skipped for venue items). |
 | `repeat_prior_meal` | Copy diary rows by `entryId`. |
 | `edit_entry` | `confirm_correction` for one `entryId` + `itemIndex` (`set_amount` \| `replace` \| `remove`). |
 | `delete_entry` | `confirm_delete` for a whole `entryId` (optional `dayKey`). User confirms, then `delete_meal` writes Firestore. |

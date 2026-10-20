@@ -14,6 +14,11 @@ struct ManualLogSheet: View {
     @State private var catalogResults: [Food] = []
     @State private var searchTask: Task<Void, Never>?
     @State private var path = NavigationPath()
+    @State private var showBarcodeScanner = false
+    @State private var pendingBarcodeHit: BarcodeLookupHit?
+    @State private var pendingMissCustom = false
+    @State private var pendingMissSearch = false
+    @FocusState private var searchFocused: Bool
 
     init(dayKey: String, initialMealSlot: String? = nil) {
         self.initialDay = DayKey.date(from: dayKey) ?? Calendar.current.startOfDay(for: .now)
@@ -67,6 +72,42 @@ struct ManualLogSheet: View {
                         dismiss()
                     }
                 }
+                .fullScreenCover(isPresented: $showBarcodeScanner, onDismiss: {
+                    if let hit = pendingBarcodeHit {
+                        pendingBarcodeHit = nil
+                        let next = draft(from: hit)
+                        LibraryItem.upsertFromBarcodeHit(
+                            hit,
+                            perServing: MacroTotals(
+                                calories: next.baseCalories,
+                                proteinG: next.baseProteinG,
+                                carbsG: next.baseCarbsG,
+                                fatG: next.baseFatG
+                            ),
+                            in: modelContext
+                        )
+                        try? modelContext.save()
+                        path.append(next)
+                    } else if pendingMissCustom {
+                        pendingMissCustom = false
+                        path.append(customDraft())
+                    } else if pendingMissSearch {
+                        pendingMissSearch = false
+                        searchFocused = true
+                    }
+                }) {
+                    BarcodeScannerSheet(
+                        onHit: { hit in
+                            pendingBarcodeHit = hit
+                        },
+                        onMissSearch: {
+                            pendingMissSearch = true
+                        },
+                        onMissCustom: {
+                            pendingMissCustom = true
+                        }
+                    )
+                }
                 .onAppear {
                     MealTypeCatalog.seedIfNeeded(in: modelContext)
                     refreshCatalog(for: query)
@@ -95,6 +136,7 @@ struct ManualLogSheet: View {
                 TextField("Search foods", text: $query)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($searchFocused)
             }
 
             if !isSearching {
@@ -159,6 +201,14 @@ struct ManualLogSheet: View {
             }
 
             Section {
+                Button {
+                    showBarcodeScanner = true
+                } label: {
+                    Label("Scan barcode", systemImage: "barcode.viewfinder")
+                        .foregroundStyle(Color.capy.accent)
+                }
+                .accessibilityLabel("Scan barcode")
+
                 Button {
                     path.append(customDraft())
                 } label: {
@@ -275,6 +325,38 @@ struct ManualLogSheet: View {
             allowMacroEdit: false,
             foodId: food.id,
             ingredientFamily: food.ingredientFamily
+        )
+    }
+
+    private func draft(from hit: BarcodeLookupHit) -> FoodLogDraft {
+        let servingG: Double = {
+            if let g = hit.servingGrams, g > 0 { return g }
+            return PortionDefaults.servingGrams(
+                family: "",
+                name: hit.displayName,
+                kcalPer100g: hit.per100g.calories
+            )
+        }()
+        let macros = PortionDefaults.scaledMacros(per100g: hit.per100g, grams: servingG)
+        let detail: String = {
+            if let brand = hit.brand, !brand.isEmpty { return brand }
+            if let label = hit.servingLabel, !label.isEmpty { return label }
+            return "Open Food Facts"
+        }()
+        return FoodLogDraft(
+            name: hit.displayName,
+            detail: detail,
+            baseGrams: servingG,
+            baseCalories: macros.calories,
+            baseProteinG: macros.proteinG,
+            baseCarbsG: macros.carbsG,
+            baseFatG: macros.fatG,
+            grams: servingG,
+            day: initialDay,
+            mealSlot: initialMealSlot ?? "",
+            allowMacroEdit: false,
+            foodId: hit.foodId,
+            ingredientFamily: ""
         )
     }
 
@@ -587,44 +669,33 @@ struct LogFoodDetailsView: View {
     }
 
     private func save() {
-        let item = MealEntryItem(
+        let line = MealCommitLine(
             name: draft.name,
+            foodId: draft.foodId,
             grams: draft.grams,
             calories: draft.calories,
             proteinG: draft.proteinG,
             carbsG: draft.carbsG,
             fatG: draft.fatG,
-            foodId: draft.foodId,
-            ingredientFamily: draft.ingredientFamily
+            family: draft.ingredientFamily,
+            source: draft.foodId.hasPrefix("off_") ? "web" : ""
         )
-
-        let entry: MealEntry
-        if let existingEntry {
-            for old in existingEntry.items {
-                modelContext.delete(old)
-            }
-            existingEntry.dayKey = DayKey.make(from: draft.day)
-            existingEntry.mealSlot = draft.mealSlot
-            existingEntry.originalUserText = draft.name
-            existingEntry.confirmed = true
-            item.entry = existingEntry
-            existingEntry.items = [item]
-            entry = existingEntry
-        } else {
-            let newEntry = MealEntry(
-                dayKey: DayKey.make(from: draft.day),
-                mealSlot: draft.mealSlot,
-                originalUserText: draft.name,
-                confirmed: true,
-                items: []
-            )
-            item.entry = newEntry
-            newEntry.items = [item]
-            modelContext.insert(newEntry)
-            entry = newEntry
-        }
-        try? modelContext.save()
-        UserSyncService.shared.enqueueLogMeal(entry)
+        _ = MealCommit.saveManualEntry(
+            line: line,
+            dayKey: DayKey.make(from: draft.day),
+            mealSlot: draft.mealSlot,
+            existing: existingEntry,
+            barcodePerServing: draft.foodId.hasPrefix("off_")
+                ? MacroTotals(
+                    calories: draft.baseCalories,
+                    proteinG: draft.baseProteinG,
+                    carbsG: draft.baseCarbsG,
+                    fatG: draft.baseFatG
+                )
+                : nil,
+            barcodeDetail: draft.detail,
+            in: modelContext
+        )
         onSaved()
     }
 

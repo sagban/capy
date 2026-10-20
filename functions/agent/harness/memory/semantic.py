@@ -49,4 +49,6 @@ def semantic_block(req: InterpretMealRequest) -> dict[str, Any]:
         },
         "assistanceLevel": req.context.assistanceLevel,
         "responseStyle": req.context.responseStyle,
+        # Titles only — model may name them; resolve still requires a strict match.
+        "libraryTitles": [item.name for item in (req.libraryContext or [])[:20]],
     }

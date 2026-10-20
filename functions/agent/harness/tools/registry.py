@@ -10,7 +10,7 @@ from langchain_core.tools import BaseTool, InjectedToolArg, tool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from schemas import ItemDraft
+from schemas import ItemDraft, MacroTotals
 from agent.harness.tools.common import memory_proposal
 from agent.harness.tools import jobs
 
@@ -24,6 +24,22 @@ class DraftFood(BaseModel):
     unit: str
     brandOrVenue: Optional[str] = None
     aliases: list[str] = Field(default_factory=list, description="Other names to search.")
+    portionMacros: Optional[MacroTotals] = Field(
+        default=None,
+        description="Macros as listed for this quantity+unit (menu/label). Omit for catalog staples.",
+    )
+    servingGrams: Optional[float] = Field(
+        default=None,
+        description="Grams for one count/serving when unit is piece/serving (optional).",
+    )
+    citationUrl: Optional[str] = Field(
+        default=None,
+        description="Source URL when portionMacros comes from the web.",
+    )
+    displayName: Optional[str] = Field(
+        default=None,
+        description="Menu name to show when it differs from foodQuery.",
+    )
 
 
 class DraftMeal(BaseModel):
@@ -174,7 +190,9 @@ def new_entry(
         optionId: Id from episodic.lastSuggestionOptions to log a prior compose_suggestions option,
             then optional ops/items.
 
-    In your reply, confirm what you are about to log. For restaurants, set brandOrVenue on items.
+    In your reply, tell them in plain language what you staged and that they can confirm —
+    warm and specific, never tool JSON or ResolvedItem fields. For venues, set brandOrVenue
+    and pass portionMacros + citationUrl when you looked the item up.
     """
     return jobs.new_entry(
         ctx["req"],
@@ -208,16 +226,17 @@ def compose_suggestions(
 
     Args:
         drafts: 2–3 options; every item needs foodQuery, quantity, and unit as a sitting.
+            At a venue: set brandOrVenue (or venue) and portionMacros + citationUrl from the menu.
         mealSlot: Slot to size against when the user named one.
         venue: Restaurant or place, when relevant (also set brandOrVenue on draft items).
         budget: Explicit macro ceiling up to remaining; overrides the guide when set.
         appetite: light, normal, or hearty from how much they want to eat; omit for normal.
 
-    In your reply, name options in plain language and tie them to what's left today. Warm and
-    specific beats one-word answers. semantic.slotBudgets are guides; set appetite from intent or
-    pass budget up to semantic.remaining. Prefer variety; avoid repeating semantic.todayFamilies.
+    In your reply, walk through the options in plain language and how they fit what's left —
+    communicative, never tool JSON or ResolvedItem dumps. semantic.slotBudgets are guides; set
+    appetite from intent or pass budget up to semantic.remaining. Prefer variety; avoid repeating
+    semantic.todayFamilies.
     """
-    del venue
     from agent.harness.meal_budget import normalize_appetite
 
     return jobs.compose_suggestions(
@@ -226,6 +245,7 @@ def compose_suggestions(
         budget=budget.model_dump() if budget else None,
         appetite=normalize_appetite(appetite),
         drafts=[draft.model_dump() for draft in drafts],
+        venue=venue,
         memory=ctx["memory"],
         proposals=ctx["proposals"],
     )

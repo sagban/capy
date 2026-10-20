@@ -35,6 +35,32 @@ Server implementation: [`mcp_server/capy_mcp/server.py`](../../mcp_server/capy_m
 
 **Returns:** `{ "profile": { ... } }`.
 
+## `upsert_library_item`
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `item` | object | yes | Library row (`id`, `name`, `kind`, macros, `ingredients`, …) |
+| `client_mutation_id` | string | no | Idempotency key |
+
+**Returns:** `{ "id" }`.
+
+## `delete_library_item`
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `id` | string | yes | Library item id |
+| `client_mutation_id` | string | no | Idempotency key |
+
+**Returns:** `{ "id" }`.
+
+## `list_library`
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `include_deleted` | boolean | no | Default `false` |
+
+**Returns:** `{ "items": [ … ] }`.
+
 ## `get_thread`
 
 | Argument | Type | Required | Description |

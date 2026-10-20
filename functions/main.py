@@ -47,12 +47,15 @@ from firebase_functions.params import SecretParam
 from agent.auth import AuthError, exchange_firebase_for_access, resolve_callable_uid
 from interpret_api import interpret_meal_for_uid
 from user_api import (
+    handle_delete_library_item,
     handle_delete_meal,
     handle_get_thread,
+    handle_list_library,
     handle_log_meal,
     handle_lookup_barcode,
     handle_patch_profile,
     handle_patch_thread,
+    handle_upsert_library_item,
 )
 
 logger = logging.getLogger("capy.interpret_meal")
@@ -165,6 +168,39 @@ def exchange_access_token(req: https_fn.CallableRequest) -> dict:
 def lookup_barcode(req: https_fn.CallableRequest) -> dict:
     """Exact GTIN → Open Food Facts product for Manual Log barcode scanner."""
     return handle_lookup_barcode(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def upsert_library_item(req: https_fn.CallableRequest) -> dict:
+    """Create or replace users/{uid}/library/{id}."""
+    return handle_upsert_library_item(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def delete_library_item(req: https_fn.CallableRequest) -> dict:
+    """Soft-delete users/{uid}/library/{id}."""
+    return handle_delete_library_item(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def list_library(req: https_fn.CallableRequest) -> dict:
+    """List users/{uid}/library for client restore / merge."""
+    return handle_list_library(req)
 
 
 # Warm Phoenix/Arrow (curl) during gunicorn preload on macOS so fork children

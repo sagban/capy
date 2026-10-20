@@ -49,3 +49,37 @@ struct PatchProfilePayload: Codable, Equatable, Sendable {
     var responseStyle: String?
     var longTermMemory: [LongTermMemoryNoteDTO]?
 }
+
+// MARK: - library
+
+struct UpsertLibraryItemPayload: Codable, Equatable, Sendable {
+    var clientMutationId: String
+    var item: LibraryItemSyncDTO
+}
+
+struct DeleteLibraryItemPayload: Codable, Equatable, Sendable {
+    var clientMutationId: String
+    var id: String
+}
+
+struct LibraryItemSyncDTO: Codable, Equatable, Sendable {
+    var id: String
+    var name: String
+    var kind: String
+    var origin: String
+    var detail: String
+    var calories: Double
+    var proteinG: Double
+    var carbsG: Double
+    var fatG: Double
+    var servingGrams: Double
+    var sourceFoodId: String
+    var ingredients: [LibraryIngredientLine]
+    var createdAt: String?
+    var updatedAt: String?
+    var deleted: Bool?
+}
+
+struct ListLibraryResponseDTO: Codable, Equatable, Sendable {
+    var items: [LibraryItemSyncDTO]
+}

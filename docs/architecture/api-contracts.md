@@ -68,6 +68,50 @@ Returns `{ "dayKey", "entryId" }`. Replays with the same `clientMutationId` retu
 
 Soft-deletes `users/{uid}/days/{dayKey}/entries/{entryId}` (`deleted: true`, `confirmed: false`). Returns `{ "dayKey", "entryId" }`. Idempotent via `clientMutationId` like `log_meal`.
 
+### `upsert_library_item` (callable)
+
+```json
+{
+  "clientMutationId": "optional-idempotency-key",
+  "item": {
+    "id": "uuid",
+    "name": "Gym Bowl",
+    "kind": "meal",
+    "origin": "user",
+    "detail": "",
+    "calories": 520,
+    "proteinG": 40,
+    "carbsG": 45,
+    "fatG": 18,
+    "servingGrams": 350,
+    "sourceFoodId": "",
+    "ingredients": [],
+    "createdAt": "2026-10-19T12:00:00Z"
+  }
+}
+```
+
+Writes `users/{uid}/library/{id}`. Returns `{ "id" }`. Idempotent via `clientMutationId`.
+
+### `delete_library_item` (callable)
+
+```json
+{
+  "id": "uuid",
+  "clientMutationId": "optional-idempotency-key"
+}
+```
+
+Soft-deletes `users/{uid}/library/{id}` (`deleted: true`). Returns `{ "id" }`.
+
+### `list_library` (callable)
+
+```json
+{ "includeDeleted": false }
+```
+
+→ `{ "items": [ /* library docs */ ] }` for client restore/merge.
+
 ### `lookup_barcode` (callable)
 
 Exact GTIN → Open Food Facts product for the Manual Log barcode scanner. Server looks up OFF; iOS scales `per100g` to the chosen portion (same as catalog hits). Incomplete nutrition → miss (never invent macros).
@@ -101,7 +145,7 @@ Miss / unusable product:
 
 ### `interpretMeal` server context
 
-Set `"useServerContext": true` on the interpret request to build diary/profile/thread from Firestore instead of inline snapshots. iOS encodes `utterance`, `timezone`, `dayKey`, optional `threadId`, `useServerContext`, and a compact `libraryContext` snapshot (local SwiftData library for strict title resolve). Conversation is stored at `users/{uid}/threads/{threadId}`; `interpret_meal` returns an updated `conversation` on success. Omit or `false` to keep the legacy client snapshot.
+Set `"useServerContext": true` on the interpret request to build diary/profile/thread/library from Firestore instead of inline snapshots. iOS encodes `utterance`, `timezone`, `dayKey`, optional `threadId`, `useServerContext`, and a compact `libraryContext` snapshot (merged with server library). Conversation is stored at `users/{uid}/threads/{threadId}`; `interpret_meal` returns an updated `conversation` on success. Omit or `false` to keep the legacy client snapshot.
 
 ## `interpretMeal` (primary)
 

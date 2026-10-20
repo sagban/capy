@@ -7,15 +7,15 @@ struct PendingSyncOperation: Codable, Identifiable, Equatable {
     var logMeal: LogMealPayload?
     var deleteMeal: DeleteMealPayload?
     var patchProfile: PatchProfilePayload?
+    var upsertLibraryItem: UpsertLibraryItemPayload?
+    var deleteLibraryItem: DeleteLibraryItemPayload?
 
     static func logMeal(_ payload: LogMealPayload) -> PendingSyncOperation {
         PendingSyncOperation(
             id: UUID(),
             kind: .logMeal,
             enqueuedAt: .now,
-            logMeal: payload,
-            deleteMeal: nil,
-            patchProfile: nil
+            logMeal: payload
         )
     }
 
@@ -24,9 +24,7 @@ struct PendingSyncOperation: Codable, Identifiable, Equatable {
             id: UUID(),
             kind: .deleteMeal,
             enqueuedAt: .now,
-            logMeal: nil,
-            deleteMeal: payload,
-            patchProfile: nil
+            deleteMeal: payload
         )
     }
 
@@ -35,9 +33,25 @@ struct PendingSyncOperation: Codable, Identifiable, Equatable {
             id: UUID(),
             kind: .patchProfile,
             enqueuedAt: .now,
-            logMeal: nil,
-            deleteMeal: nil,
             patchProfile: payload
+        )
+    }
+
+    static func upsertLibraryItem(_ payload: UpsertLibraryItemPayload) -> PendingSyncOperation {
+        PendingSyncOperation(
+            id: UUID(),
+            kind: .upsertLibraryItem,
+            enqueuedAt: .now,
+            upsertLibraryItem: payload
+        )
+    }
+
+    static func deleteLibraryItem(_ payload: DeleteLibraryItemPayload) -> PendingSyncOperation {
+        PendingSyncOperation(
+            id: UUID(),
+            kind: .deleteLibraryItem,
+            enqueuedAt: .now,
+            deleteLibraryItem: payload
         )
     }
 }

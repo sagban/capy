@@ -94,6 +94,44 @@ async def patch_profile(patch: dict[str, Any]) -> str:
 
 
 @mcp.tool(
+    name="upsert_library_item",
+    description="Create or replace a user library food/recipe/meal in Firestore.",
+)
+async def upsert_library_item(
+    item: dict[str, Any],
+    client_mutation_id: str | None = None,
+) -> str:
+    payload: dict[str, Any] = {"item": item}
+    if client_mutation_id:
+        payload["clientMutationId"] = client_mutation_id
+    return _json(await _client().call("upsert_library_item", payload))
+
+
+@mcp.tool(
+    name="delete_library_item",
+    description="Soft-delete a user library item.",
+)
+async def delete_library_item(
+    id: str,
+    client_mutation_id: str | None = None,
+) -> str:
+    payload: dict[str, Any] = {"id": id}
+    if client_mutation_id:
+        payload["clientMutationId"] = client_mutation_id
+    return _json(await _client().call("delete_library_item", payload))
+
+
+@mcp.tool(
+    name="list_library",
+    description="List the user's synced library items.",
+)
+async def list_library(include_deleted: bool = False) -> str:
+    return _json(
+        await _client().call("list_library", {"includeDeleted": include_deleted})
+    )
+
+
+@mcp.tool(
     name="get_thread",
     description=(
         "Fetch a paginated slice of Capy chat history (newest page without cursor; "

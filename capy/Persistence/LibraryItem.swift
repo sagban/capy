@@ -12,6 +12,7 @@ final class LibraryItem {
     var carbsG: Double
     var fatG: Double
     var createdAt: Date
+    var updatedAt: Date = Date()
     /// Stable id for nesting meals/recipes in other meals.
     var uuidString: String = UUID().uuidString
     /// JSON-encoded `[LibraryIngredientLine]` for recipes/meals; empty for simple foods.
@@ -71,11 +72,16 @@ final class LibraryItem {
         self.carbsG = carbsG
         self.fatG = fatG
         self.createdAt = createdAt
+        self.updatedAt = createdAt
         self.uuidString = UUID().uuidString
         self.ingredientsJSON = "[]"
         self.sourceFoodId = sourceFoodId
         self.servingGrams = max(servingGrams, 1)
         self.ingredients = ingredients
+    }
+
+    func touchUpdatedAt() {
+        updatedAt = .now
     }
 
     /// Upsert a simple food from an Open Food Facts barcode hit (macros = 1 serving).
@@ -108,6 +114,7 @@ final class LibraryItem {
             existing.carbsG = perServing.carbsG
             existing.fatG = perServing.fatG
             existing.kind = .food
+            existing.touchUpdatedAt()
             return existing
         }
 
@@ -127,19 +134,20 @@ final class LibraryItem {
     }
 
     /// Refresh name/macros for a barcode-imported food after the user confirms a log.
+    @discardableResult
     static func updateFromBarcodeLog(
         foodId: String,
         name: String,
         detail: String,
         perServing: MacroTotals,
         in context: ModelContext
-    ) {
-        guard foodId.hasPrefix("off_"), !foodId.isEmpty else { return }
+    ) -> LibraryItem? {
+        guard foodId.hasPrefix("off_"), !foodId.isEmpty else { return nil }
         var descriptor = FetchDescriptor<LibraryItem>(
             predicate: #Predicate { $0.sourceFoodId == foodId }
         )
         descriptor.fetchLimit = 1
-        guard let existing = try? context.fetch(descriptor).first else { return }
+        guard let existing = try? context.fetch(descriptor).first else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             existing.name = trimmed
@@ -151,6 +159,8 @@ final class LibraryItem {
         existing.proteinG = perServing.proteinG
         existing.carbsG = perServing.carbsG
         existing.fatG = perServing.fatG
+        existing.touchUpdatedAt()
+        return existing
     }
 
     /// Save a Capy-confirmed web/estimate food into Library (AI-generated) for reuse.
@@ -202,6 +212,7 @@ final class LibraryItem {
             if existing.sourceFoodId.isEmpty {
                 existing.sourceFoodId = key
             }
+            existing.touchUpdatedAt()
             return existing
         }
 

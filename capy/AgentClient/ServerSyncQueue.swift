@@ -19,6 +19,16 @@ actor ServerSyncQueue {
         if operation.kind == .patchProfile {
             pending.removeAll { $0.kind == .patchProfile }
         }
+        if operation.kind == .upsertLibraryItem, let itemId = operation.upsertLibraryItem?.item.id {
+            pending.removeAll {
+                $0.upsertLibraryItem?.item.id == itemId || $0.deleteLibraryItem?.id == itemId
+            }
+        }
+        if operation.kind == .deleteLibraryItem, let itemId = operation.deleteLibraryItem?.id {
+            pending.removeAll {
+                $0.upsertLibraryItem?.item.id == itemId || $0.deleteLibraryItem?.id == itemId
+            }
+        }
         pending.append(operation)
         save(pending)
     }

@@ -35,11 +35,10 @@ Multi-ingredient dishes are stored outside `foodCorpus`.
 - **Meals** — same composer, but items may be catalog foods **or** library recipes / foods / other meals (counted in servings, macros snapped at add time).
 - **Foods** — simple name + manual macros (no composition).
 - Logging a library recipe or meal still logs **one serving** (summed macros) via Manual Log.
-- Firestore sync of **user** recipes/meals is not wired yet.
+- User library (food / recipe / meal) syncs to Firestore `users/{uid}/library/{id}` via `upsert_library_item` / `delete_library_item` / `list_library`.
 
 ## Follow-up
 
 - `catalog.search_seed`: optionally search `recipes` by name (separate from staple foods).
 - `SeedImporter`: stop rolling seed composites into a single `Food` per 100g when clients read `recipes` only.
 - Delete legacy composite docs from `foodCorpus` after clients read `recipes`.
-- Sync user library recipes to Firestore `recipes/{id}`.

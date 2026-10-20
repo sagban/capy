@@ -274,7 +274,7 @@ class MemorySnapshot(BaseModel):
 
 
 class LibraryItemRef(BaseModel):
-    """Compact user library row for resolve (client snapshot; not overfit as a catalog)."""
+    """Compact user library row for resolve (Firestore + optional client snapshot)."""
 
     id: str
     name: str

@@ -42,11 +42,11 @@ Local authority: **SwiftData**. Reserved inventory entity exists for Phase 5 (FR
 - `MealTemplateItem[]` (food + default grams)
 
 ### LibraryItem
-- User custom **Meal / Recipe / Food**
+- User custom **Meal / Recipe / Food** (local SwiftData + Firestore `users/{uid}/library/{id}`)
 - `origin`: user | aiGenerated (wire raw value on iOS)
-- `sourceFoodId?`, `servingGrams` (grams for the stored per-serving macros)
+- `sourceFoodId?`, `servingGrams` (grams for the stored per-serving macros), `updatedAt`
 - Capy confirm of `web`/`estimate` foods upserts here as AI-generated
-- Links to foods/grams or composite definition
+- Links to foods/grams or composite definition; sync via `UserSyncService`
 
 ### ExplicitMemory / Preferences
 - Preferences, dislikes, allergies, diets

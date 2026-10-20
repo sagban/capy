@@ -44,7 +44,7 @@ enum MealCommit {
             item.entry = entry
             entry.items.append(item)
             if upsertAILibrary, let per100g = line.per100g {
-                LibraryItem.upsertFromAcceptedAgentLine(
+                if let libraryItem = LibraryItem.upsertFromAcceptedAgentLine(
                     name: line.name,
                     foodId: line.foodId,
                     grams: line.grams,
@@ -53,7 +53,9 @@ enum MealCommit {
                     citationUrl: line.citationUrl,
                     portionLabel: line.portionLabel,
                     in: context
-                )
+                ) {
+                    UserSyncService.shared.enqueueUpsertLibrary(libraryItem)
+                }
             }
             sync(entry, in: context)
             added = added + macros
@@ -111,13 +113,15 @@ enum MealCommit {
             entry = created
         }
         if line.foodId.hasPrefix("off_"), let perServing = barcodePerServing {
-            LibraryItem.updateFromBarcodeLog(
+            if let libraryItem = LibraryItem.updateFromBarcodeLog(
                 foodId: line.foodId,
                 name: line.name,
                 detail: barcodeDetail,
                 perServing: perServing,
                 in: context
-            )
+            ) {
+                UserSyncService.shared.enqueueUpsertLibrary(libraryItem)
+            }
         }
         sync(entry, in: context)
         return entry

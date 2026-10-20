@@ -228,6 +228,7 @@ struct LibraryEditorSheet: View {
             )
         }
 
+        let saved: LibraryItem
         if let existing {
             existing.name = trimmedName
             existing.kind = kind
@@ -237,21 +238,25 @@ struct LibraryEditorSheet: View {
             existing.carbsG = totals.carbsG
             existing.fatG = totals.fatG
             existing.ingredients = lines
+            existing.touchUpdatedAt()
+            saved = existing
         } else {
-            modelContext.insert(
-                LibraryItem(
-                    name: trimmedName,
-                    kind: kind,
-                    origin: .user,
-                    detail: detail,
-                    calories: totals.calories,
-                    proteinG: totals.proteinG,
-                    carbsG: totals.carbsG,
-                    fatG: totals.fatG,
-                    ingredients: lines
-                )
+            let item = LibraryItem(
+                name: trimmedName,
+                kind: kind,
+                origin: .user,
+                detail: detail,
+                calories: totals.calories,
+                proteinG: totals.proteinG,
+                carbsG: totals.carbsG,
+                fatG: totals.fatG,
+                ingredients: lines
             )
+            modelContext.insert(item)
+            saved = item
         }
+        try? modelContext.save()
+        UserSyncService.shared.enqueueUpsertLibrary(saved)
         dismiss()
     }
 }

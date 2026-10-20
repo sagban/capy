@@ -65,6 +65,9 @@ Cursor / Claude Desktop config (example):
 | `interpret_meal` | `interpret_meal` | Agent turn (suggestions, confirm, clarify) |
 | `log_meal` | `log_meal` | Persist a meal entry |
 | `patch_profile` | `patch_profile` | Update prefs / targets / meal plan |
+| `upsert_library_item` | `upsert_library_item` | Create/replace library item |
+| `delete_library_item` | `delete_library_item` | Soft-delete library item |
+| `list_library` | `list_library` | List synced library |
 | `get_thread` | `get_thread` | Paginated chat history |
 | `patch_thread` | `patch_thread` | Assistant line / day rollover |
 | `exchange_access_token` | `exchange_access_token` | Mint access JWT from Firebase ID token |

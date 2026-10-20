@@ -12,10 +12,13 @@ from interpret_api import interpret_meal_for_uid
 from firebase_functions import https_fn
 
 from user_api import (
+    delete_library_item_for_uid,
     get_thread_for_uid,
+    list_library_for_uid,
     log_meal_for_uid,
     patch_profile_for_uid,
     patch_thread_for_uid,
+    upsert_library_item_for_uid,
 )
 
 
@@ -100,6 +103,30 @@ async def get_thread(
     if cursor:
         payload["cursor"] = cursor
     return _json(_invoke(get_thread_for_uid, uid, payload))
+
+
+@mcp.tool(name="upsert_library_item", description="Create or replace a user library item.")
+async def upsert_library_item(item: dict[str, Any], client_mutation_id: str | None = None) -> str:
+    uid = require_uid()
+    payload: dict[str, Any] = {"item": item}
+    if client_mutation_id:
+        payload["clientMutationId"] = client_mutation_id
+    return _json(_invoke(upsert_library_item_for_uid, uid, payload))
+
+
+@mcp.tool(name="delete_library_item", description="Soft-delete a user library item.")
+async def delete_library_item(id: str, client_mutation_id: str | None = None) -> str:
+    uid = require_uid()
+    payload: dict[str, Any] = {"id": id}
+    if client_mutation_id:
+        payload["clientMutationId"] = client_mutation_id
+    return _json(_invoke(delete_library_item_for_uid, uid, payload))
+
+
+@mcp.tool(name="list_library", description="List the user's synced library items.")
+async def list_library(include_deleted: bool = False) -> str:
+    uid = require_uid()
+    return _json(_invoke(list_library_for_uid, uid, {"includeDeleted": include_deleted}))
 
 
 @mcp.tool(name="patch_thread", description="Append assistant text or day-rollover note.")

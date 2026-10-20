@@ -162,7 +162,11 @@ struct LibraryTabView: View {
 
     private func delete(_ source: [LibraryItem], at offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(source[index])
+            let item = source[index]
+            let id = item.uuidString
+            modelContext.delete(item)
+            UserSyncService.shared.enqueueDeleteLibrary(id: id)
         }
+        try? modelContext.save()
     }
 }

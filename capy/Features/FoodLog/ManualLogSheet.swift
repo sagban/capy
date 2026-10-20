@@ -76,7 +76,7 @@ struct ManualLogSheet: View {
                     if let hit = pendingBarcodeHit {
                         pendingBarcodeHit = nil
                         let next = draft(from: hit)
-                        LibraryItem.upsertFromBarcodeHit(
+                        let libraryItem = LibraryItem.upsertFromBarcodeHit(
                             hit,
                             perServing: MacroTotals(
                                 calories: next.baseCalories,
@@ -87,6 +87,7 @@ struct ManualLogSheet: View {
                             in: modelContext
                         )
                         try? modelContext.save()
+                        UserSyncService.shared.enqueueUpsertLibrary(libraryItem)
                         path.append(next)
                     } else if pendingMissCustom {
                         pendingMissCustom = false

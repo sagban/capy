@@ -9,6 +9,7 @@ from agent.user_store import (
     build_diary_context,
     day_key_for_timezone,
     get_profile,
+    library_refs_for_interpret,
     long_term_from_profile,
     preference_context_from_profile,
 )
@@ -60,9 +61,16 @@ def load_interpret_request(uid: str, raw: dict[str, Any]) -> InterpretMealReques
     }
     if raw.get("memorySnapshot") is not None:
         base["memorySnapshot"] = raw.get("memorySnapshot")
-    # Client snapshot of local SwiftData library (not stored in Firestore yet).
-    if isinstance(raw.get("libraryContext"), list):
-        base["libraryContext"] = raw.get("libraryContext")
+    # Firestore library is source of truth; fall back to client snapshot while migrating.
+    server_library = library_refs_for_interpret(uid)
+    client_library = raw.get("libraryContext") if isinstance(raw.get("libraryContext"), list) else []
+    if server_library:
+        by_id = {str(row.get("id")): row for row in client_library if isinstance(row, dict)}
+        for row in server_library:
+            by_id[str(row.get("id"))] = row
+        base["libraryContext"] = list(by_id.values())
+    elif client_library:
+        base["libraryContext"] = client_library
     return InterpretMealRequest.model_validate(base)
 
 

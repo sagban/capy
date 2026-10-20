@@ -8,7 +8,8 @@ Phase 1 source of truth for harness context. Clients keep sending fat `interpret
 |------|---------|
 | `users/{uid}` | Profile: targets, meal plan, prefs, assistance, long-term notes |
 | `users/{uid}/days/{dayKey}/entries/{entryId}` | One meal log (embedded `items[]`) |
-| `users/{uid}/clientMutations/{clientMutationId}` | Idempotency index for `log_meal` |
+| `users/{uid}/library/{itemId}` | User library food / recipe / meal (soft-delete via `deleted`) |
+| `users/{uid}/clientMutations/{clientMutationId}` | Idempotency index for meal + library writes |
 | `users/{uid}/threads/{threadId}` | Capy thread head: summary, rolling `recentTurns` (harness), `workingMemory`, `nextSeq` |
 | `users/{uid}/threads/{threadId}/messages/{messageId}` | Durable chat archive (every turn) |
 
@@ -132,6 +133,30 @@ Every user/assistant turn is appended here (`seq` monotonic per thread). Nothing
 
 Harness context expands each item to a `DiaryEntry` row (same shape as the legacy iOS diary DTO).
 
+## Library item document (`users/{uid}/library/{itemId}`)
+
+```json
+{
+  "id": "uuid",
+  "name": "Gym Bowl",
+  "kind": "meal",
+  "origin": "user",
+  "detail": "",
+  "calories": 520,
+  "proteinG": 40,
+  "carbsG": 45,
+  "fatG": 18,
+  "servingGrams": 350,
+  "sourceFoodId": "",
+  "ingredients": [],
+  "deleted": false,
+  "createdAt": "…",
+  "updatedAt": "…"
+}
+```
+
+`kind`: `food` | `recipe` | `meal`. `origin`: `user` | `aiGenerated`. Soft-delete sets `deleted: true`.
+
 ## Callables
 
 | Function | Role |
@@ -139,7 +164,10 @@ Harness context expands each item to a `DiaryEntry` row (same shape as the legac
 | `patch_profile` | Merge allowed profile fields |
 | `log_meal` | Create/update entry; idempotent via `clientMutationId` |
 | `delete_meal` | Soft-delete entry (`deleted: true`); idempotent via `clientMutationId` |
-| `interpret_meal` | Pass `useServerContext: true` to load diary/profile/thread from Firestore; returns updated `conversation` |
+| `upsert_library_item` | Create/replace library doc; idempotent via `clientMutationId` |
+| `delete_library_item` | Soft-delete library doc; idempotent via `clientMutationId` |
+| `list_library` | List library docs (`includeDeleted` optional) for client merge |
+| `interpret_meal` | Pass `useServerContext: true` to load diary/profile/thread/library from Firestore; returns updated `conversation` |
 | `get_thread` | Read `users/{uid}/threads/{threadId}` |
 | `patch_thread` | Append assistant text and/or day-rollover summary note |
 
@@ -147,10 +175,11 @@ Harness context expands each item to a `DiaryEntry` row (same shape as the legac
 
 `agent/context_loader.py` → `load_interpret_request` / `resolve_interpret_request`.
 
-Builds `InterpretMealRequest` for `prepare` → `build_pack` → `semantic_block`. Utterance and `dayKey`/`timezone` come from the client; conversation loads from `users/{uid}/threads/{threadId}` (`agent/thread_store.py`).
+Builds `InterpretMealRequest` for `prepare` → `build_pack` → `semantic_block`. Utterance and `dayKey`/`timezone` come from the client; conversation loads from `users/{uid}/threads/{threadId}` (`agent/thread_store.py`). With `useServerContext`, `libraryContext` loads from `users/{uid}/library` (merged with any client snapshot).
 
 ## iOS client (phase 2)
 
-- `UserSyncService` queues `log_meal` / `patch_profile` (UserDefaults), flushes on network + app active.
-- `InterpretMealRequestDTO.serverContext` sends only utterance + day identity + `useServerContext`; chat history syncs via `get_thread` / `interpret_meal` response `conversation` / `patch_thread`.
+- `UserSyncService` queues `log_meal` / `delete_meal` / `patch_profile` / `upsert_library_item` / `delete_library_item` (UserDefaults), flushes on network + app active.
+- Library pull: `list_library` on launch / foreground; merge into SwiftData; push local-only rows.
+- `InterpretMealRequestDTO.serverContext` sends utterance + day identity + `useServerContext` (+ compact local `libraryContext` while migrating); chat history syncs via `get_thread` / `interpret_meal` response `conversation` / `patch_thread`.
 - Profile push: Settings, goals, meal types, memory sheet, and app launch.

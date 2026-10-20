@@ -18,8 +18,11 @@ from agent.thread_store import (
 from agent.harness.search.open_food_facts import lookup_barcode as off_lookup_barcode
 from agent.harness.search.open_food_facts import normalize_gtin
 from agent.user_store import delete_entry as store_delete_entry
+from agent.user_store import delete_library_item as store_delete_library_item
+from agent.user_store import list_library_items as store_list_library_items
 from agent.user_store import log_meal as store_log_meal
 from agent.user_store import patch_profile as store_patch_profile
+from agent.user_store import upsert_library_item as store_upsert_library_item
 from schemas import MacroTotals
 
 logger = logging.getLogger("capy.user_api")
@@ -197,3 +200,74 @@ def handle_lookup_barcode(req: https_fn.CallableRequest) -> dict[str, Any]:
     uid = _uid(req)
     raw = req.data if isinstance(req.data, dict) else {}
     return lookup_barcode_for_uid(uid, raw)
+
+
+def upsert_library_item_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
+    item = raw.get("item")
+    if not isinstance(item, dict):
+        # Allow flat payload (item fields at top level) for simpler clients.
+        item = {k: v for k, v in raw.items() if k not in {"clientMutationId", "useServerContext"}}
+    if not isinstance(item, dict) or not item:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="item is required.",
+        )
+    try:
+        result = store_upsert_library_item(
+            uid,
+            item=item,
+            client_mutation_id=str(raw.get("clientMutationId") or "").strip() or None,
+        )
+    except ValueError as exc:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message=str(exc),
+        ) from exc
+    logger.info("upsert_library_item uid=%s id=%s", uid, result["id"])
+    return result
+
+
+def handle_upsert_library_item(req: https_fn.CallableRequest) -> dict[str, Any]:
+    uid = _uid(req)
+    raw = req.data if isinstance(req.data, dict) else {}
+    return upsert_library_item_for_uid(uid, raw)
+
+
+def delete_library_item_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
+    item_id = str(raw.get("id") or "").strip()
+    if not item_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="id is required.",
+        )
+    try:
+        result = store_delete_library_item(
+            uid,
+            item_id=item_id,
+            client_mutation_id=str(raw.get("clientMutationId") or "").strip() or None,
+        )
+    except ValueError as exc:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message=str(exc),
+        ) from exc
+    logger.info("delete_library_item uid=%s id=%s", uid, result["id"])
+    return result
+
+
+def handle_delete_library_item(req: https_fn.CallableRequest) -> dict[str, Any]:
+    uid = _uid(req)
+    raw = req.data if isinstance(req.data, dict) else {}
+    return delete_library_item_for_uid(uid, raw)
+
+
+def list_library_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
+    include_deleted = bool(raw.get("includeDeleted"))
+    items = store_list_library_items(uid, include_deleted=include_deleted)
+    return {"items": items}
+
+
+def handle_list_library(req: https_fn.CallableRequest) -> dict[str, Any]:
+    uid = _uid(req)
+    raw = req.data if isinstance(req.data, dict) else {}
+    return list_library_for_uid(uid, raw)

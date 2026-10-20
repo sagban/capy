@@ -69,6 +69,44 @@ final class UserSyncService {
         }
     }
 
+    func enqueueUpsertLibrary(_ item: LibraryItem, clientMutationId: String = UUID().uuidString) {
+        let payload = LibrarySyncBuilder.upsertPayload(for: item, clientMutationId: clientMutationId)
+        Task {
+            await ServerSyncQueue.shared.enqueue(.upsertLibraryItem(payload))
+            await flushPending()
+        }
+    }
+
+    func enqueueDeleteLibrary(id: String, clientMutationId: String = UUID().uuidString) {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let payload = LibrarySyncBuilder.deletePayload(id: trimmed, clientMutationId: clientMutationId)
+        Task {
+            await ServerSyncQueue.shared.enqueue(.deleteLibraryItem(payload))
+            await flushPending()
+        }
+    }
+
+    /// Pull Firestore library into SwiftData, then push any local-only rows.
+    func pullLibrary(into modelContext: ModelContext) async {
+        guard isNetworkReachable else { return }
+        guard Auth.auth().currentUser != nil else { return }
+        do {
+            let raw = try await AgentClient.shared.callCallable(
+                "list_library",
+                payload: ["includeDeleted": true]
+            )
+            let data = try JSONSerialization.data(withJSONObject: raw)
+            let response = try JSONDecoder().decode(ListLibraryResponseDTO.self, from: data)
+            LibrarySyncBuilder.mergeRemote(response.items, into: modelContext)
+            await flushPending()
+        } catch {
+            #if DEBUG
+            print("[UserSyncService] list_library failed: \(error)")
+            #endif
+        }
+    }
+
     func flushPending() async {
         guard isNetworkReachable else { return }
         guard Auth.auth().currentUser != nil else { return }
@@ -92,6 +130,14 @@ final class UserSyncService {
                     guard let payload = operation.patchProfile else { continue }
                     let dict = try Self.encode(payload)
                     _ = try await AgentClient.shared.callCallable("patch_profile", payload: dict)
+                case .upsertLibraryItem:
+                    guard let payload = operation.upsertLibraryItem else { continue }
+                    let dict = try Self.encode(payload)
+                    _ = try await AgentClient.shared.callCallable("upsert_library_item", payload: dict)
+                case .deleteLibraryItem:
+                    guard let payload = operation.deleteLibraryItem else { continue }
+                    let dict = try Self.encode(payload)
+                    _ = try await AgentClient.shared.callCallable("delete_library_item", payload: dict)
                 }
                 completed.insert(operation.id)
             } catch {

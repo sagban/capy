@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 
 extension InterpretMealRequestDTO {
-    /// Minimal `interpret_meal` body when the server loads profile, diary, and thread from Firestore.
-    /// Still attaches a compact local library snapshot for strict title resolve.
+    /// Minimal `interpret_meal` body when the server loads profile, diary, thread, and library from Firestore.
+    /// Still attaches a compact local library snapshot (merged server-side).
     static func serverContext(
         utterance: String,
         dayKey: String,

@@ -45,6 +45,10 @@ def _entries(uid: str, day_key: str):
     return _users(uid).collection("days").document(day_key).collection("entries")
 
 
+def _library(uid: str):
+    return _users(uid).collection("library")
+
+
 def _mutations(uid: str):
     return _users(uid).collection("clientMutations")
 
@@ -335,3 +339,146 @@ def delete_entry(
             {"dayKey": day_key, "entryId": entry_id, "createdAt": now}
         )
     return {"dayKey": day_key, "entryId": entry_id}
+
+
+_LIBRARY_KINDS = frozenset({"food", "recipe", "meal"})
+_LIBRARY_ORIGINS = frozenset({"user", "aiGenerated"})
+
+
+def find_library_mutation(uid: str, client_mutation_id: str) -> Optional[dict[str, str]]:
+    if not client_mutation_id:
+        return None
+    snap = _mutations(uid).document(client_mutation_id).get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict() or {}
+    item_id = data.get("libraryItemId")
+    if item_id:
+        return {"id": str(item_id)}
+    return None
+
+
+def upsert_library_item(
+    uid: str,
+    *,
+    item: dict[str, Any],
+    client_mutation_id: str | None = None,
+) -> dict[str, str]:
+    """Create or replace users/{uid}/library/{id}."""
+    if client_mutation_id:
+        existing = find_library_mutation(uid, client_mutation_id)
+        if existing:
+            return existing
+
+    item_id = str(item.get("id") or "").strip() or str(uuid.uuid4())
+    name = str(item.get("name") or "").strip()
+    if not name:
+        raise ValueError("name is required")
+
+    kind = str(item.get("kind") or "food").strip()
+    if kind not in _LIBRARY_KINDS:
+        kind = "food"
+    origin = str(item.get("origin") or "user").strip()
+    if origin not in _LIBRARY_ORIGINS:
+        origin = "user"
+
+    ingredients = item.get("ingredients")
+    if not isinstance(ingredients, list):
+        ingredients = []
+
+    now = datetime.utcnow().isoformat() + "Z"
+    created = str(item.get("createdAt") or "").strip() or now
+    payload = {
+        "id": item_id,
+        "name": name,
+        "kind": kind,
+        "origin": origin,
+        "detail": str(item.get("detail") or "").strip(),
+        "calories": float(item.get("calories") or 0),
+        "proteinG": float(item.get("proteinG") or 0),
+        "carbsG": float(item.get("carbsG") or 0),
+        "fatG": float(item.get("fatG") or 0),
+        "servingGrams": max(float(item.get("servingGrams") or 100), 1),
+        "sourceFoodId": str(item.get("sourceFoodId") or "").strip(),
+        "ingredients": ingredients,
+        "deleted": False,
+        "createdAt": created,
+        "updatedAt": now,
+    }
+    if client_mutation_id:
+        payload["clientMutationId"] = client_mutation_id
+
+    _library(uid).document(item_id).set(payload, merge=True)
+    if client_mutation_id:
+        _mutations(uid).document(client_mutation_id).set(
+            {"libraryItemId": item_id, "createdAt": now}
+        )
+    return {"id": item_id}
+
+
+def delete_library_item(
+    uid: str,
+    *,
+    item_id: str,
+    client_mutation_id: str | None = None,
+) -> dict[str, str]:
+    """Soft-delete users/{uid}/library/{id}."""
+    if client_mutation_id:
+        existing = find_library_mutation(uid, client_mutation_id)
+        if existing:
+            return existing
+
+    item_id = item_id.strip()
+    if not item_id:
+        raise ValueError("id is required")
+
+    ref = _library(uid).document(item_id)
+    now = datetime.utcnow().isoformat() + "Z"
+    # Soft-delete even if missing so retries stay idempotent.
+    ref.set(
+        {
+            "id": item_id,
+            "deleted": True,
+            "updatedAt": now,
+        },
+        merge=True,
+    )
+    if client_mutation_id:
+        _mutations(uid).document(client_mutation_id).set(
+            {"libraryItemId": item_id, "createdAt": now}
+        )
+    return {"id": item_id}
+
+
+def list_library_items(uid: str, *, include_deleted: bool = False) -> list[dict[str, Any]]:
+    """Return library docs (newest updated first)."""
+    rows: list[dict[str, Any]] = []
+    for snap in _library(uid).stream():
+        data = snap.to_dict() or {}
+        if not include_deleted and data.get("deleted"):
+            continue
+        data.setdefault("id", snap.id)
+        rows.append(data)
+    rows.sort(key=lambda row: str(row.get("updatedAt") or row.get("createdAt") or ""), reverse=True)
+    return rows
+
+
+def library_refs_for_interpret(uid: str, *, limit: int = 80) -> list[dict[str, Any]]:
+    """Compact rows for harness libraryContext."""
+    out: list[dict[str, Any]] = []
+    for row in list_library_items(uid):
+        out.append(
+            {
+                "id": str(row.get("id") or ""),
+                "name": str(row.get("name") or ""),
+                "kind": str(row.get("kind") or "food"),
+                "calories": float(row.get("calories") or 0),
+                "proteinG": float(row.get("proteinG") or 0),
+                "carbsG": float(row.get("carbsG") or 0),
+                "fatG": float(row.get("fatG") or 0),
+                "servingGrams": max(float(row.get("servingGrams") or 100), 1),
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out

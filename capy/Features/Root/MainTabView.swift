@@ -22,12 +22,14 @@ struct MainTabView: View {
         .task {
             await UserSyncService.shared.start()
             UserSyncService.shared.scheduleProfileSync(in: modelContext)
+            await UserSyncService.shared.pullLibrary(into: modelContext)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
                     await UserSyncService.shared.flushPending()
                     UserSyncService.shared.scheduleProfileSync(in: modelContext)
+                    await UserSyncService.shared.pullLibrary(into: modelContext)
                 }
             }
         }

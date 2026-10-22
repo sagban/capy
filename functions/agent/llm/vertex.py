@@ -8,8 +8,6 @@ import os
 from functools import lru_cache
 from typing import Any, Optional
 
-from agent.llm.response_style import temperature_for_response_style
-
 logger = logging.getLogger("capy.vertex")
 
 DEFAULT_PROJECT = "capy-dogfood"
@@ -47,13 +45,38 @@ def get_vertex_client():
     )
 
 
+def _append_tool_exchange(contents: list[Any], exchange: list[dict[str, Any]] | None, types: Any) -> None:
+    for group in exchange or []:
+        call_parts = []
+        response_parts = []
+        calls = list(group.get("calls") or [])
+        results = list(group.get("results") or [])
+        for call in calls:
+            name = str(call.get("name") or "")
+            if not name:
+                continue
+            arguments = call.get("arguments") if isinstance(call.get("arguments"), dict) else {}
+            call_parts.append(types.Part.from_function_call(name=name, args=arguments))
+        for item in results:
+            name = str(item.get("name") or "")
+            if not name:
+                continue
+            payload = item.get("result") if isinstance(item.get("result"), dict) else {"result": item.get("result")}
+            response_parts.append(types.Part.from_function_response(name=name, response=payload))
+        if call_parts:
+            contents.append(types.Content(role="model", parts=call_parts))
+        if response_parts:
+            contents.append(types.Content(role="user", parts=response_parts))
+
+
 def generate_with_tools(
     *,
     system: str,
     user_content: str,
     tool_declarations: list[dict[str, Any]],
     history: list[dict[str, Any]] | None = None,
-    temperature: float | None = None,
+    tool_exchange: list[dict[str, Any]] | None = None,
+    temperature: float,
 ) -> dict[str, Any]:
     """
     One agent turn. Returns:
@@ -64,11 +87,6 @@ def generate_with_tools(
     import phoenix_tracing
 
     model = _model()
-    sample_temp = (
-        temperature
-        if temperature is not None
-        else temperature_for_response_style(None)
-    )
     with phoenix_tracing.llm_span(
         "vertex_gemini",
         model=model,
@@ -110,6 +128,7 @@ def generate_with_tools(
             contents.append(
                 types.Content(role="user", parts=[types.Part.from_text(text=user_content)])
             )
+            _append_tool_exchange(contents, tool_exchange, types)
 
             # Do NOT set response_mime_type with tools — Gemini rejects / hangs on that combo.
             result = client.models.generate_content(
@@ -117,7 +136,7 @@ def generate_with_tools(
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system,
-                    temperature=sample_temp,
+                    temperature=temperature,
                     tools=tools,
                 ),
             )
@@ -172,24 +191,19 @@ def generate_text(
     *,
     system: str,
     user_content: str,
-    temperature: float | None = None,
+    temperature: float,
 ) -> str:
     """Short text completion with no tools. Empty string on failure."""
     try:
         from google.genai import types
 
         client = get_vertex_client()
-        sample_temp = (
-            temperature
-            if temperature is not None
-            else temperature_for_response_style(None)
-        )
         result = client.models.generate_content(
             model=_model(),
             contents=user_content,
             config=types.GenerateContentConfig(
                 system_instruction=system,
-                temperature=sample_temp,
+                temperature=temperature,
             ),
         )
         return (result.text or "").strip()

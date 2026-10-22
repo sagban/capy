@@ -1,1 +1,1 @@
-"""Deterministic meal harness: resolve, tools, memory, format, checkpoints."""
+"""In-app turn: prompt, confirm gate, tool batch, memory pack, and the client outcome."""

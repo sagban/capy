@@ -1,92 +1,92 @@
-# LangGraph harness architecture
+# Harness
 
-Hosted on **Python Firebase Functions (2nd gen)**. Meal chat is one Vertex Gemini turn with typed tools, then deterministic execution. USDA key lives in Secret Manager (`USDA_FDC_API_KEY`). There is no skill router, no chip/action dispatch, and no phrase list.
+The in-app model and an external MCP agent share one tool list. The model sees each tool result on the tool channel and may call the next tool, up to twelve tool rounds, then writes the reply. Offline tests set `CAPY_MOCK_AGENT=1`.
 
-**Agent = LLM + harness.** The user types every follow-up. Suggestions are display-only until they ask to log in chat (`new_entry` with `optionId`). Manual Log in the iOS Food Log tab is the non-AI escape hatch. The meal model has Google Search grounding on its Vertex turn (Gemini 3+); harness tools do not call the web.
+The system prompt is `functions/agent/harness/prompts/`. The harness builds it and passes the prompt and the registry tool declarations into the Gemini call. Tool descriptions live on the registry in `functions/agent/tools/`. USDA key: Secret Manager `USDA_FDC_API_KEY`.
 
-The system prompt lives in [`functions/agent/llm/prompt.py`](../../functions/agent/llm/prompt.py). Tool descriptions live on the `@tool` functions in [`functions/agent/harness/tools/registry.py`](../../functions/agent/harness/tools/registry.py). Offline unit tests use `CAPY_MOCK_AGENT=1`.
-
-`functions/` keeps the Cloud Function entry (`main.py`), the callable DTOs (`schemas.py`), and tracing. The agent is `functions/agent/`: **LLM** (`llm/`) + **harness** (`harness/`, including tools).
-
-Harness layout (capability-oriented):
+## Layout
 
 ```text
-harness/
-  search/          # food_search, usda, catalog, library_match, open_food_facts
-  tools/
-    registry.py    # @tool wrappers
-    common.py      # outcome builders
-    jobs/          # diary.py, compose.py, run.py
-  resolve.py, portions.py, format.py, messaging.py, memory/, …
+functions/agent/
+  graph.py            # prepare → llm ⇄ environment → format → respond
+  turn.py             # those nodes
+  tools/              # shared stateless tools and the Gemini registry
+  llm/                # Gemini call. The harness passes the prompt in.
+  mcp_host.py         # MCP edge. Same diary tools, direct writes
+  thread_store.py     # conversation thread
+  user_store.py       # profile, diary, library
+  harness/
+    prompts/          # system text, user text, assistance and reply-style dials
+    execute.py        # bind uid, library, and diary, then call the tool
+    policy.py         # confirm gate for the first in-app write
+    diets.py          # mark diet and allergy conflicts on lookup hits
+    suggestions.py    # cards from hits already fetched
+    outcomes.py       # client outcome from the tool trace
+    tool_args.py      # validate arguments against the registry
+    save_memory.py    # remember / forget proposals (not a tool)
+    portions.py       # grams from household units
+    format.py         # assistant text from model prose or phrase facts
+    messaging.py      # strip tool output from the chat reply
+    mock_turn.py      # scripted model turns for tests
+    checkpointer.py   # graph checkpoints
+    memory/           # context pack, meal budget, and meal slots
 ```
 
-Import from `agent.harness.search.*` (no top-level shims).
+`tools/search/` holds the catalog, USDA, library, and barcode clients, plus the Firestore food corpus and recipe stores. `memory/` builds the JSON pack (`assemble.py`: episodic, semantic, long-term). Notes and the diary are stored by `thread_store.py` and `user_store.py`.
+
+Firebase callables in `main.py` are the iOS edge. Tools and those callables both call `user_api` / `user_store`. Tools do not call the callable handlers.
 
 ## Graph
 
 ```text
-START -> prepare -> llm
-llm --tool calls--> environment -> format -> respond -> END
-llm --text only---> format -> respond -> END
-llm --infra x2---> respond
+START → prepare → llm
+llm --tool calls, under the cap--> environment → llm
+llm --text, or cap hit--> format → respond → END
+llm --infra failure twice--> respond
 ```
 
-| Node | File | Job |
-|------|------|-----|
-| prepare | `agent/turn.py` | Validate the request. Build the memory pack. Clear `calls`, `model_text`, `outcome`, and `response` so a checkpoint cannot leak the last turn. |
-| llm | `agent/llm/model.py` | One Gemini call with meal tools plus Google Search grounding. Bad-args retry is inside this step (max 2). |
-| environment | `agent/harness/tools/` | LangChain `@tool` registry. Pydantic `args_schema` plus `InjectedToolArg` for request context; Gemini declarations and argument checks are derived from the tools. Phoenix spans use the tool name(s) (e.g. `compose_suggestions`), not the graph node label. |
-| format | `agent/harness/format.py` | Uses the model's reply when present; appends a factual line from tool outcomes (suggestions, clarify, memory) when that adds numbers the user needs. No second model call. |
-| respond | `agent/turn.py` | `normalize_outcome()`. Infra failure is `warnings: ["agent_unavailable"]` and an empty message. |
+| Node | Where | What it does |
+|------|--------|----------------|
+| prepare | `turn.py` | Validate the request, build the memory pack, clear the previous turn's calls and outcome. |
+| llm | `llm/model.py` | One Gemini call with the shared tools and Google Search grounding. Tool results from this turn go back as function responses. Bad arguments retry inside this step (max 2). |
+| environment | `execute.py` | Run the calls. `diets.py` marks diet and allergy conflicts on hits. `policy.py` stages the first in-app write. `outcomes.py` builds the client outcome. |
+| format | `format.py` | Use the model's prose when it sent some. Otherwise build a short line from tool facts. |
+| respond | `turn.py` | `normalize_outcome()`. Infra failure is `warnings: ["agent_unavailable"]` and an empty message. |
 
-LangGraph compiles with a checkpointer. `thread_id` is `{firebase_uid}:{conversation.threadId}` (default thread `default`). Tests use `MemorySaver`. Production uses Firestore collection `agentGraphCheckpoints` (client reads/writes denied). Checkpoints store orchestration history; diary and remaining macros still arrive fresh on each request.
+`thread_id` is `{firebase_uid}:{conversation.threadId}` (default `default`). Tests use `MemorySaver`. Production checkpoints live in Firestore `agentGraphCheckpoints` (clients denied). Diary and remaining macros arrive fresh on each request.
 
-## Memory pack
+The model may run twelve tool rounds. After each round it reads the function responses. A thirteenth tool call is dropped and the turn replies.
 
-`agent/harness/memory/assemble.py` builds one JSON context pack:
+## Shared tools
 
-| Layer | Contents |
-|-------|----------|
-| Episodic | `threadId`, last 8 turns, compact older turns, summary, open resolve queue / draft, last suggestion ids |
-| Semantic | remaining macros, slot budgets, usual foods, today + 14-day diary, diets / allergies / likes / dislikes |
-| Long-term | `longTermMemory` notes |
+Declared in `functions/agent/tools/`. The model passes the action arguments. `uid` is bound from auth. Library rows and diary rows are bound by the wrapper.
 
-Numbers in the pack are computed in Python (`meal_budget.py`), not by the meal model.
+| Tool | Returns |
+|------|---------|
+| `search_catalog` | Seed catalog hits. Does not log. |
+| `search_usda` | USDA FoodData Central hits, in FDC order. Does not log. |
+| `search_library` | Strict match on the user's saved library. Does not log. |
+| `lookup_barcode` | Open Food Facts for one GTIN. Miss is `found: false`. Does not log. |
+| `portion_to_grams` | `{grams, label}` or `{unmapped: true}`. Does not guess. |
+| `get_diary` | `{dayKey, entries, remaining}` for one day. |
+| `write_food_entry` | Writes one entry: a food, a recipe, or a meal. Returns `{entryId, dayKey}`. `entry_id` replaces that one entry. |
+| `delete_food_entry` | Deletes one entry. Unknown id is an error. The iPhone callable is `delete_meal`. |
 
-## Resolve
+The in-app wrapper marks a diet or allergy conflict on the hit (`conflict`: `diet` or `allergy`) and still returns it. The model decides whether to use it. The first in-app `write_food_entry` or `delete_food_entry` returns `{staged: true}` and sets `pendingAction`. The same call writes only when that pending action is already on the request and the food id, grams, and per100g still match. MCP writes on the call.
 
-`agent/harness/resolve.py`, portions in `agent/harness/portions.py`.
+A log is search, then `portion_to_grams`, then one `write_food_entry`. One call is one food, one recipe, or one meal. Another food is another call. Several hits stay in the result. The model asks which one. A suggestion is a diary read plus lookups. The harness builds `suggestionOptions` from hits and gram amounts already fetched in that turn, and only when nothing was staged or written. An edit is `get_diary`, then `write_food_entry` with `entry_id`, or `delete_food_entry`.
 
-1. Queries: food query, brand + query, model aliases, singular. At most 5. No miss cache.
-2. If the draft includes grounded `portionMacros` for its quantity+unit (optional `citationUrl` / `servingGrams`) that passes Atwater checks, convert to per-100g in code, commit as `web` / `estimate`, and skip catalog search. Menu units (`slice`, `sandwich`, `oz`→`fl oz` at venues, etc.) use plate baselines when `servingGrams` is omitted; compose does not re-cap `web`/`estimate` portions with `suggestion_portion`.
-3. Else `food_search.search_foods` merges **strict** `libraryContext` matches (exact / near-title only — never “chicken” → “Sunday Chicken Feast”), then seed, then USDA (Survey/FNDDS). When `brandOrVenue` is set, USDA is skipped (seed + library only) so venue menus do not burn the turn deadline. `high` commits. `medium` with 2 or more hits pauses with names in working memory. Otherwise the next query.
-4. Phoenix tool spans record args plus `dropped` / `optionSources` / `resolvedSources` (not a bare `environment` label).
-5. Misses become `clarify_food` / dropped suggestions (Manual Log). Venue misses without citation use reason `venue_needs_citation`.
-6. Portion: explicit grams, or g/ml/oz/tsp/tbsp/cup at the `Units.swift` factors, or the food's own USDA/branded measures. Otherwise the reply asks how much, in text.
-7. The first item that still needs the user pauses the turn. `resolveQueue` holds resolved items, the pending draft, remaining drafts, and candidate labels for the model. The next **utterance** continues it. The whole turn stops at 45 seconds.
+## Not tools
 
-Clarify options are **not** sent as UI chips. They stay in `workingMemory.resolveQueue` so the model can read them.
-
-## Suggestions
-
-`agent/harness/meal_budget.py`. A suggestion is a normal meal for that slot, not the day's remainder.
-
-- Stated budget if the model passes one.
-- Else the median kcal and protein of that slot when 3 or more days exist in the diary.
-- Else plan-position weighted defaults on current remaining (last slot in `mealPlan` uses full remaining; earlier slots lighter). Slots come from `diaryContext.mealPlan` (client) or inferred diary `mealSlot` names — not a fixed breakfast/lunch/dinner list. Out-of-plan / snack-like slots use a small macro cap.
-- Guide budgets may be scaled by `appetite` on `compose_suggestions` (`light` | `normal` | `hearty`; LLM interprets intent). Explicit `budget` overrides the guide. Only remaining macros are a hard ceiling.
-- Always capped at remaining kcal. Remaining at or below 0 makes the budget 0 and every option `over`.
-
-After resolve: if search is ambiguous, keep the top hit (suggestions are not HITL). Drop an option that hits a diet (vegetarian/vegan/pescatarian from prefs, notes, or this chat), an allergy, a dislike, or a food family already logged today. Cap each item at a household serving (oils/fats ~2 tbsp; staples 3 cups/servings or 500 g). An option that is only oil/butter is dropped. `within` means kcal at or under the slot budget. There is no calorie floor. `over` is shown. Suggestions are chat, not cards. Logging one is a later `new_entry` with `optionId`; that stages the meal for HITL confirm before `log_meal`.
+- **Memory.** `save_memory.py` adds a `memoryProposals` entry when the utterance starts with "remember" or "forget". `format_reply` attaches it. The client applies it. There is no confirm step for memory.
+- **MCP.** `mcp_host.py` exposes the four lookups, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, and the library tools. See [mcp-tools.md](mcp-tools.md). The external agent calls those tools. `write_food_entry` and `delete_food_entry` on MCP write immediately. Direct lookups return the source hits with no `conflict` field. `interpret_meal` is the iPhone callable and is not an MCP tool.
+- **Callables.** `log_meal`, `delete_meal`, profile, library, and barcode callables are the iPhone edge. They call `user_api`, the same bottom the tools use. See [api-contracts.md](api-contracts.md).
+- **Ranker.** `tools/search/food_search.py` scores a pool for offline evals. The agent does not call it.
 
 ## Outcomes
 
-Blocking, at most one: `clarify_food`, `clarify_portion`, `confirm_log`, `confirm_correction`, `confirm_delete`.
+At most one blocking action: `clarify_food`, `clarify_portion`, `confirm_log`, `confirm_correction`, `confirm_delete`.
 
-Clarify pending payloads carry a **reason** (and `manualLog` / `freeTextGrams`). Candidate labels live in working memory, not in tap chips.
+A staged `write_food_entry` without `entry_id` is `confirm_log`. A staged `write_food_entry` with `entry_id` is `confirm_correction`. A staged `delete_food_entry` is `confirm_delete`. Suggestion cards are omitted when a write was staged.
 
-Non-blocking: `suggestionOptions`, `memoryProposals` (client applies them), or a chat reply with no pending action.
-
-`confirm_log` and suggestions may both be present.
-
-Primary diary tools: `new_entry` (stage log), `edit_entry` (one item via `confirm_correction`), `delete_entry` (whole entry via `confirm_delete`), `repeat_prior_meal`.
+Payloads: [api-contracts.md](api-contracts.md).

@@ -1,5 +1,5 @@
-"""Gemini client, prompts, and one model turn."""
+"""Gemini client. The harness supplies the prompt."""
 
-from agent.llm.model import model_turn
+from agent.llm.model import generate
 
-__all__ = ["model_turn"]
+__all__ = ["generate"]

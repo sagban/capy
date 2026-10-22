@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from agent.harness.food_corpus_store import FOOD_CORPUS_COLLECTION
+from agent.tools.search.food_corpus_store import FOOD_CORPUS_COLLECTION
 from schemas import MacroTotals
 
 logger = logging.getLogger("capy.seed_corpus_import")
@@ -158,7 +158,7 @@ def iter_seed_documents(seed: dict[str, Any]) -> list[tuple[str, dict[str, Any]]
 
 
 def iter_recipes_from_seed(seed: dict[str, Any]) -> list[dict[str, Any]]:
-    from agent.harness.recipes_store import recipe_from_composite_seed_raw
+    from agent.tools.search.recipes_store import recipe_from_composite_seed_raw
 
     catalog_version = int(seed.get("version") or 0)
     recipes: list[dict[str, Any]] = []
@@ -273,7 +273,7 @@ def import_seed_catalog(
         }
 
     written = write_seed_documents(db, documents)
-    from agent.harness.recipes_store import upsert_recipes, write_catalog_meta as write_recipes_meta
+    from agent.tools.search.recipes_store import upsert_recipes, write_catalog_meta as write_recipes_meta
 
     recipe_docs = iter_recipes_from_seed(seed)
     recipes_written = upsert_recipes(db, recipe_docs)

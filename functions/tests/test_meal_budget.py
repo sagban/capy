@@ -2,7 +2,7 @@
 
 from schemas import request_from_dict
 
-from agent.harness.meal_budget import fit_label, slot_budget
+from agent.harness.memory.meal_budget import fit_label, slot_budget
 
 
 def _req(today=None, previous=None, remaining=None):

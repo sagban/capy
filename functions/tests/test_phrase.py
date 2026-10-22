@@ -70,20 +70,33 @@ def test_empty_suggestion_draft_still_explains_the_options():
         draft="",
         outcome={
             "budget": {"calories": 825, "proteinG": 78},
+            "day": {
+                "eaten": ["egg whites", "coffee"],
+                "remaining": {"calories": 1540, "proteinG": 84},
+            },
             "options": [
                 {
                     "title": "Tofu salad",
                     "fit": "within",
                     "totals": {"calories": 297, "proteinG": 24},
                     "items": ["200 g tofu"],
-                }
+                },
+                {
+                    "title": "Greek yogurt bowl",
+                    "fit": "within",
+                    "totals": {"calories": 222, "proteinG": 26},
+                },
             ],
         },
     )
+    assert "egg whites" in text
     assert "Tofu salad" in text
+    assert "Greek yogurt bowl" in text
     assert "297" in text
     assert "825" in text
+    assert "on track" in text.lower()
     assert "200 g tofu" not in text
+    assert "\n\n" in text
 
 
 def test_portion_question_does_not_call_a_tablespoon_the_food():

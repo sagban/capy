@@ -25,8 +25,9 @@ Cappy is an iPhone calorie tracker with an agent front door. **Code owns trusted
 │ Cloud Functions     │───────┘                   │
 │ (Python 2nd gen)    │  returns intent / foods / │
 │ LangGraph harness   │  grams / clarify only     │
-│ Gemini structured   │                           │
-│ USDA fallback       │◄── Secret Manager keys    │
+│ Gemini + tools      │                           │
+│ catalog, USDA,      │◄── Secret Manager keys    │
+│ library, barcode    │                           │
 └─────────────────────┘
 ```
 

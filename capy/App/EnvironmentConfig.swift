@@ -22,6 +22,17 @@ enum AppEnvironment: String, Sendable {
         }
     }
 
+    /// Streamable HTTP MCP. Trailing slash is required.
+    /// Local is `service_app` on port 8080. Prod is the Cloud Run `cappy-api` host.
+    var hostedMCPURL: URL {
+        switch self {
+        case .local:
+            URL(string: "http://\(Self.emulatorHost):8080/mcp/")!
+        case .prod:
+            URL(string: "https://cappy-api-322403791923.us-central1.run.app/mcp/")!
+        }
+    }
+
     /// Full callable URL for raw clients (SDK preferred in prod; local uses HTTP).
     var interpretMealURL: URL {
         switch self {
@@ -81,6 +92,7 @@ enum EnvironmentConfig {
     static var functionsName: String { environment.functionsName }
     static var baseURL: URL { environment.baseURL }
     static var interpretMealURL: URL { environment.interpretMealURL }
+    static var hostedMCPURL: URL { environment.hostedMCPURL }
 
     static func makeFunctions() -> Functions { environment.makeFunctions() }
 

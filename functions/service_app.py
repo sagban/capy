@@ -1,8 +1,9 @@
-"""Cloud Run ASGI entry: health, token exchange, and MCP (SSE) at /mcp."""
+"""Cloud Run ASGI entry: health, token exchange, and MCP Streamable HTTP at /mcp/."""
 
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,7 +11,8 @@ from fastapi.responses import JSONResponse
 from firebase_admin import initialize_app
 
 from agent.auth import AuthError, exchange_firebase_for_access, resolve_bearer_to_uid
-from agent.mcp_host import mcp_sse_asgi
+from agent.kitchen_session import register_kitchen
+from agent.mcp_host import mcp, mcp_http_asgi
 from agent.request_context import current_uid
 
 try:
@@ -18,7 +20,17 @@ try:
 except ValueError:
     pass
 
-app = FastAPI(title="Cappy API", version="1.0")
+_mcp_asgi = mcp_http_asgi()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Streamable HTTP rejects every request until this task group is running.
+    async with mcp.session_manager.run():
+        yield
+
+
+app = FastAPI(title="Cappy API", version="1.0", lifespan=_lifespan)
 
 
 def _bearer_from_headers(headers: dict[str, str]) -> str | None:
@@ -47,6 +59,9 @@ def _callable_envelope(result: Any) -> dict[str, Any]:
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+register_kitchen(app)
 
 
 @app.post("/exchange_access_token")
@@ -100,5 +115,5 @@ async def _send_json_error(send: Any, status: int, detail: str) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-# MCP SSE transport mounted at /mcp (clients: GET /mcp/sse, POST /mcp/messages/)
-app.mount("/mcp", _AuthMcpMiddleware(mcp_sse_asgi()))
+# Streamable HTTP (spec 2025-11-25): POST/GET /mcp/ with Authorization: Bearer.
+app.mount("/mcp", _AuthMcpMiddleware(_mcp_asgi))

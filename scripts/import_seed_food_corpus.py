@@ -61,7 +61,7 @@ def main() -> int:
         return 1
 
     seed = json.loads(path.read_text(encoding="utf-8"))
-    from agent.harness.seed_corpus_import import file_sha256, import_seed_catalog
+    from agent.tools.search.seed_corpus_import import file_sha256, import_seed_catalog
     from agent.user_store import get_db
 
     file_hash = file_sha256(path)

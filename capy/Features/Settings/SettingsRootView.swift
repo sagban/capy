@@ -17,6 +17,7 @@ struct SettingsRootView: View {
             Section("Capy") {
                 NavigationLink("Capy Settings") { CapySettingsView() }
                 NavigationLink("Memory") { MemorySheetView(embedsNavigation: false) }
+                NavigationLink("MCP token") { MCPTokenSettingsView() }
             }
         }
         .navigationTitle("Settings")

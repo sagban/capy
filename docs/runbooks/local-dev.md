@@ -109,8 +109,8 @@ iOS **capy Prod** calls deployed `interpret_meal` via Firebase Functions SDK. **
 
 | Scheme | Build configs | Harness |
 |--------|---------------|---------|
-| **capy Local** | `DebugLocal` / `ReleaseLocal` → [`Config/Local.xcconfig`](../../Config/Local.xcconfig) | Functions emulator `127.0.0.1:5001` |
-| **capy Prod** | `DebugProd` / `ReleaseProd` → [`Config/Prod.xcconfig`](../../Config/Prod.xcconfig) | Deployed `interpret_meal` on `capy-dogfood` |
+| **capy Local** | `DebugLocal` / `ReleaseLocal` → [`Config/Local.xcconfig`](../../Config/Local.xcconfig) | Functions emulator `127.0.0.1:5001`. MCP config points at `service_app` on port 8080. |
+| **capy Prod** | `DebugProd` / `ReleaseProd` → [`Config/Prod.xcconfig`](../../Config/Prod.xcconfig) | Deployed `interpret_meal` on `capy-dogfood`. MCP config points at Cloud Run `cappy-api`. |
 
 `AppEnvironment` owns per-env behavior; `EnvironmentConfig` resolves the active scheme (`CAPY_LOCAL` / `CAPYEnvironment`). Pick the scheme in Xcode before Run.
 

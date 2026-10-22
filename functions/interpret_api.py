@@ -1,4 +1,4 @@
-"""interpret_meal handler (shared by Firebase callable and Cloud Run HTTP/MCP)."""
+"""interpret_meal handler for the iPhone Firebase callable."""
 
 from __future__ import annotations
 

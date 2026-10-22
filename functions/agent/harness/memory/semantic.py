@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.harness.meal_budget import slot_budget, usual_foods
-from agent.harness.meal_slots import meal_plan_from_context, planned_slot_names
+from agent.harness.memory.meal_budget import slot_budget, usual_foods
+from agent.harness.memory.meal_slots import meal_plan_from_context, planned_slot_names
 from schemas import InterpretMealRequest
 
 

@@ -1,12 +1,23 @@
-"""Per-job graph paths. The model turn is scripted; resolve search is injected."""
+"""Graph paths with the shared tools. The model turn is scripted."""
 
 from __future__ import annotations
 
 from agent.graph import reset_graph, run_interpret
-from agent.harness.deps import set_overrides
 from agent.harness.mock_turn import push_mock_turns
 from agent.harness.outcomes import normalize_outcome
+from agent.tools.lookups import set_lookup_overrides
 from schemas import MacroTotals, request_from_dict
+
+PER = {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11}
+EGG = {
+    "foodId": "seed_egg",
+    "displayName": "Egg",
+    "source": "seed",
+    "per100g": PER,
+    "family": "egg",
+    "measures": [{"id": "m0", "label": "1 large", "grams": 50}],
+}
+MEASURES = EGG["measures"]
 
 
 def setup_function(_fn):
@@ -32,176 +43,164 @@ def _payload(utterance="", **over):
     return base
 
 
-def _egg_search(query):
-    if "chicken" in query:
+def _catalog(query, limit=10):
+    del limit
+    if "chicken" in (query or "").lower():
         row = {
             "foodId": "usda_1",
             "displayName": "Chicken A",
             "source": "usda",
             "per100g": {"calories": 165, "proteinG": 31, "carbsG": 0, "fatG": 3.6},
             "family": "poultry",
-            "measures": [],
+            "measures": [{"id": "oz", "label": "1 ounce", "grams": 28}],
         }
         other = {**row, "foodId": "usda_2", "displayName": "Chicken B"}
-        return {"results": [], "candidatesForClarify": [row, other], "confidence": "medium"}
+        return {"source": "catalog", "hits": [row, other]}
+    if "oil" in (query or "").lower():
+        return {
+            "source": "catalog",
+            "hits": [
+                {
+                    "foodId": "oil_1",
+                    "displayName": "Olive oil",
+                    "source": "usda",
+                    "per100g": {"calories": 884, "proteinG": 0, "carbsG": 0, "fatG": 100},
+                    "family": "oil",
+                    "measures": [{"id": "tbsp", "label": "1 tablespoon", "grams": 13.5}],
+                }
+            ],
+        }
+    return {"source": "catalog", "hits": [EGG]}
+
+
+def _install():
+    set_lookup_overrides(catalog=_catalog)
+
+
+def _egg_item(grams: float) -> dict:
     return {
-        "results": [
-            {
-                "foodId": "seed_egg",
-                "displayName": "Egg",
-                "source": "seed",
-                "per100g": {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11},
-                "family": "egg",
-                "measures": [{"id": "m0", "label": "1 large", "grams": 50}],
-            }
-        ],
-        "candidatesForClarify": [],
-        "confidence": "high",
+        "name": "Egg",
+        "grams": grams,
+        "foodId": "seed_egg",
+        "source": "seed",
+        "per100g": PER,
+        "ingredientFamily": "egg",
     }
 
 
-def _install_search():
-    set_overrides(search=_egg_search, fetch_measures=lambda _fid: [])
+def _portion(quantity: float, unit: str = "large") -> dict:
+    return {
+        "name": "portion_to_grams",
+        "arguments": {"quantity": quantity, "unit": unit, "measures": MEASURES},
+    }
+
+
+def _log(item: dict, **extra) -> dict:
+    arguments = {"day_key": "2026-10-13", "meal_slot": "breakfast", "kind": "food"}
+    arguments.update(item)
+    arguments.update(extra)
+    return {"name": "write_food_entry", "arguments": arguments}
 
 
 def test_log_multi_item_confirm():
-    _install_search()
+    _install()
     push_mock_turns(
         [
-            {
-                "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "new_entry",
-                        "arguments": {
-                            "items": [
-                                {"foodQuery": "egg", "quantity": 2, "unit": "large"},
-                                {"foodQuery": "egg", "quantity": 1, "unit": "large"},
-                            ]
-                        },
-                    }
-                ],
-            }
+            {"kind": "tool_calls", "calls": [{"name": "search_catalog", "arguments": {"query": "egg"}}]},
+            {"kind": "tool_calls", "calls": [_portion(2), _portion(1)]},
+            {"kind": "tool_calls", "text": "Ready to log the egg.", "calls": [_log(_egg_item(100))]},
         ]
     )
     out = run_interpret(_payload("two eggs and an egg"))
     normalize_outcome(out)
     assert out["pendingAction"]["type"] == "confirm_log"
-    assert len(out["pendingAction"]["payload"]["resolvedItems"]) == 2
+    assert len(out["pendingAction"]["payload"]["resolvedItems"]) == 1
     assert out["workingMemory"]["draftLog"]
+    assert "Ready to log the egg." in out["assistantMessage"]
 
 
-def test_clarify_keeps_queue_for_the_next_message():
-    _install_search()
+def test_several_hits_do_not_pick():
+    _install()
     push_mock_turns(
         [
             {
                 "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "new_entry",
-                        "arguments": {"items": [{"foodQuery": "chicken sandwich"}, {"foodQuery": "egg", "quantity": 1, "unit": "large"}]},
-                    }
-                ],
-            }
+                "text": "Which chicken — A or B?",
+                "calls": [{"name": "search_catalog", "arguments": {"query": "chicken"}}],
+            },
+            {"kind": "text", "text": "Which chicken — A or B?"},
         ]
     )
-    first = run_interpret(_payload("chicken sandwich and an egg"))
-    assert first["pendingAction"]["type"] == "clarify_food"
-    queue = first["workingMemory"]["resolveQueue"]
-    assert queue["remaining"][0]["foodQuery"] == "egg"
-    assert queue["clarifyOptions"]
-    assert not first["pendingAction"]["payload"].get("clarifyOptions")
+    out = run_interpret(_payload("chicken sandwich"))
+    assert out["pendingAction"] is None
+    assert "Which chicken" in out["assistantMessage"]
 
 
-def test_new_entry_ops_change_open_log():
-    _install_search()
-    memory = {
-        "draftLog": [
+def test_change_amount_stages_correction():
+    _install()
+    diary = {
+        "today": [
             {
-                "foodId": "seed_egg",
-                "displayName": "Egg",
+                "name": "Egg",
+                "mealSlot": "breakfast",
                 "grams": 50,
-                "per100g": {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11},
-                "source": "catalog",
-                "measures": [{"id": "m0", "label": "1 large", "grams": 50}],
+                "entryId": "meal-1",
+                "itemIndex": 0,
+                "foodId": "seed_egg",
+                "source": "seed",
+                "per100g": PER,
+                "ingredientFamily": "egg",
             }
-        ]
+        ],
+        "previousDays": [],
+        "remaining": {"calories": 1600, "proteinG": 80, "carbsG": 150, "fatG": 40},
     }
     push_mock_turns(
         [
+            {"kind": "tool_calls", "calls": [_portion(3)]},
             {
                 "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "new_entry",
-                        "arguments": {"ops": [{"op": "set_amount", "index": 0, "quantity": 3, "unit": "large"}]},
-                    }
-                ],
-            }
+                "calls": [_log(_egg_item(150), entry_id="meal-1")],
+            },
         ]
     )
-    out = run_interpret(
-        _payload(
-            "make it 3",
-            conversation={"summary": "", "recentTurns": [], "workingMemory": memory},
-        )
-    )
-    assert out["pendingAction"]["type"] == "confirm_log"
+    out = run_interpret(_payload("make it 3", diaryContext=diary))
+    assert out["pendingAction"]["type"] == "confirm_correction"
     assert out["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 150
+    assert out["pendingAction"]["payload"]["entryId"] == "meal-1"
 
 
-def test_suggest_then_log_by_text():
-    _install_search()
+def test_suggest_from_lookups():
+    _install()
     push_mock_turns(
         [
-            {
-                "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "lunch",
-                            "drafts": [
-                                {"title": "Eggs", "items": [{"foodQuery": "egg", "quantity": 2, "unit": "large"}]}
-                            ],
-                        },
-                    }
-                ],
-            }
+            {"kind": "tool_calls", "calls": [{"name": "search_catalog", "arguments": {"query": "egg"}}]},
+            {"kind": "tool_calls", "calls": [_portion(2)]},
+            {"kind": "text", "text": "Eggs fit what's left."},
         ]
     )
     suggested = run_interpret(_payload("suggest lunch"))
     normalize_outcome(suggested)
     assert suggested["pendingAction"] is None
+    assert suggested["intent"] == "suggest_meal"
     assert suggested["suggestionOptions"][0]["fit"] in {"within", "over"}
     assert suggested["suggestionOptions"][0]["totals"]["calories"] > 0
-    option_id = suggested["suggestionOptions"][0]["id"]
     push_mock_turns(
         [
-            {
-                "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "new_entry",
-                        "arguments": {"optionId": option_id, "ops": [{"op": "set_amount", "index": 0, "quantity": 1, "unit": "large"}]},
-                    }
-                ],
-            }
+            {"kind": "tool_calls", "calls": [_log(_egg_item(50))]},
         ]
     )
-    by_text = run_interpret(
+    logged = run_interpret(
         _payload(
-            "log that with one egg",
+            "log that egg",
             conversation={"summary": "", "recentTurns": [], "workingMemory": suggested["workingMemory"]},
         )
     )
-    assert by_text["pendingAction"]["type"] == "confirm_log"
-    assert by_text["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 50
+    assert logged["pendingAction"]["type"] == "confirm_log"
+    assert logged["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 50
 
 
 def test_repeat_and_correct_by_entry_id():
-    per = {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11}
     diary = {
         "today": [
             {
@@ -211,22 +210,16 @@ def test_repeat_and_correct_by_entry_id():
                 "entryId": "meal-1",
                 "itemIndex": 0,
                 "foodId": "seed_egg",
-                "source": "catalog",
-                "per100g": per,
+                "source": "diary",
+                "per100g": PER,
                 "ingredientFamily": "egg",
             }
         ],
         "previousDays": [],
         "remaining": {"calories": 1600, "proteinG": 80, "carbsG": 150, "fatG": 40},
     }
-    push_mock_turns(
-        [
-            {
-                "kind": "tool_calls",
-                "calls": [{"name": "repeat_prior_meal", "arguments": {"entryIds": ["meal-1"]}}],
-            }
-        ]
-    )
+    item = {**_egg_item(100), "source": "diary"}
+    push_mock_turns([{"kind": "tool_calls", "calls": [_log(item)]}])
     repeated = run_interpret(_payload("same breakfast", diaryContext=diary))
     assert repeated["pendingAction"]["type"] == "confirm_log"
     assert repeated["pendingAction"]["payload"]["resolvedItems"][0]["source"] == "diary"
@@ -238,17 +231,12 @@ def test_repeat_and_correct_by_entry_id():
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "edit_entry",
-                        "arguments": {
-                            "entryId": "meal-1",
-                            "itemIndex": 0,
-                            "op": "set_amount",
-                            "quantity": 80,
-                            "unit": "g",
-                        },
+                        "name": "portion_to_grams",
+                        "arguments": {"quantity": 80, "unit": "g", "measures": []},
                     }
                 ],
-            }
+            },
+            {"kind": "tool_calls", "calls": [_log({**_egg_item(80), "source": "diary"}, entry_id="meal-1")]},
         ]
     )
     corrected = run_interpret(_payload("make it 80 g", diaryContext=diary))
@@ -257,8 +245,7 @@ def test_repeat_and_correct_by_entry_id():
     assert corrected["pendingAction"]["payload"]["resolvedItems"][0]["grams"] == 80
 
 
-def test_delete_entry_stages_confirm_delete():
-    per = {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11}
+def test_delete_meal_stages_confirm_delete():
     diary = {
         "today": [
             {
@@ -269,7 +256,7 @@ def test_delete_entry_stages_confirm_delete():
                 "itemIndex": 0,
                 "foodId": "seed_egg",
                 "source": "catalog",
-                "per100g": per,
+                "per100g": PER,
                 "ingredientFamily": "egg",
             }
         ],
@@ -280,7 +267,9 @@ def test_delete_entry_stages_confirm_delete():
         [
             {
                 "kind": "tool_calls",
-                "calls": [{"name": "delete_entry", "arguments": {"entryId": "meal-friday"}}],
+                "calls": [
+                    {"name": "delete_food_entry", "arguments": {"day_key": "2026-10-13", "entry_id": "meal-friday"}}
+                ],
             }
         ]
     )
@@ -292,88 +281,62 @@ def test_delete_entry_stages_confirm_delete():
     assert "Egg" in (out["pendingAction"]["payload"].get("reason") or "")
 
 
-def test_suggest_drops_meat_when_user_said_vegetarian():
-    _install_search()
-    push_mock_turns(
+def test_diet_conflict_stays_on_the_hit():
+    _install()
+    from agent.harness.execute import run_calls
+
+    req = request_from_dict(_payload("I am vegetarian, what should I eat"))
+    trace, _out = run_calls(
+        req,
         [
-            {
-                "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "lunch",
-                            "drafts": [
-                                {
-                                    "title": "Chicken",
-                                    "items": [{"foodQuery": "chicken", "quantity": 5, "unit": "oz"}],
-                                },
-                                {
-                                    "title": "Eggs",
-                                    "items": [{"foodQuery": "egg", "quantity": 2, "unit": "large"}],
-                                },
-                            ],
-                        },
-                    }
-                ],
-            }
-        ]
+            {"name": "search_catalog", "arguments": {"query": "chicken"}},
+            {"name": "search_catalog", "arguments": {"query": "egg"}},
+        ],
+        uid="test",
     )
-    out = run_interpret(_payload("I am vegetarian, what should I eat"))
-    normalize_outcome(out)
-    assert [opt["title"] for opt in out["suggestionOptions"]] == ["Eggs"]
-    assert "Chicken" not in (out["assistantMessage"] or "")
+    chicken = trace[0]["result"]["hits"]
+    assert chicken
+    assert all(hit.get("conflict") == "diet" for hit in chicken)
+    egg = trace[1]["result"]["hits"][0]
+    assert egg["displayName"] == "Egg"
+    assert "conflict" not in egg
 
 
-def test_suggest_uses_top_hit_when_search_is_ambiguous():
-    _install_search()
+def test_ambiguous_search_uses_the_hit_the_caller_portioned():
+    _install()
+    chicken_measures = [{"id": "oz", "label": "1 ounce", "grams": 28}]
     push_mock_turns(
         [
+            {"kind": "tool_calls", "calls": [{"name": "search_catalog", "arguments": {"query": "chicken"}}]},
             {
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "lunch",
-                            "drafts": [
-                                {
-                                    "title": "Chicken",
-                                    "items": [{"foodQuery": "chicken", "quantity": 5, "unit": "oz"}],
-                                }
-                            ],
-                        },
+                        "name": "portion_to_grams",
+                        "arguments": {"quantity": 5, "unit": "oz", "measures": chicken_measures},
                     }
                 ],
-            }
+            },
+            {"kind": "text", "text": "Chicken A is one way to use the slot."},
         ]
     )
     out = run_interpret(_payload("suggest lunch"))
     normalize_outcome(out)
-    assert out["suggestionOptions"]
     assert "Chicken" in out["suggestionOptions"][0]["items"][0]["displayName"]
     assert out["assistantMessage"]
 
 
 def test_dinner_tool_keeps_the_model_sentence():
-    _install_search()
+    _install()
     push_mock_turns(
         [
             {
                 "kind": "tool_calls",
                 "text": "Eggs are a simple dinner with what you have left.",
-                "calls": [
-                    {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "dinner",
-                            "drafts": [
-                                {"title": "Eggs", "items": [{"foodQuery": "egg", "quantity": 2, "unit": "large"}]}
-                            ],
-                        },
-                    }
-                ],
-            }
+                "calls": [{"name": "search_catalog", "arguments": {"query": "egg"}}],
+            },
+            {"kind": "tool_calls", "calls": [_portion(2)]},
+            {"kind": "text", "text": ""},
         ]
     )
     out = run_interpret(_payload("What should I eat for dinner."))
@@ -386,10 +349,7 @@ def test_dinner_tool_keeps_the_model_sentence():
 def test_memory_add_and_remove_with_chat():
     push_mock_turns(
         [
-            {
-                "kind": "tool_calls",
-                "calls": [{"name": "save_memory", "arguments": {"op": "add", "text": "no cilantro"}}],
-            },
+            {"kind": "text", "text": ""},
             {"kind": "text", "text": "What did you have."},
         ]
     )
@@ -402,131 +362,63 @@ def test_memory_add_and_remove_with_chat():
     assert chat["intent"] == "unknown"
 
 
-def test_combined_log_and_suggest():
-    _install_search()
+def test_log_does_not_also_build_suggestion_cards():
+    _install()
     push_mock_turns(
         [
-            {
-                "kind": "tool_calls",
-                "calls": [
-                    {
-                        "name": "new_entry",
-                        "arguments": {"items": [{"foodQuery": "egg", "quantity": 1, "unit": "large"}]},
-                    },
-                    {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "lunch",
-                            "drafts": [
-                                {"title": "Eggs", "items": [{"foodQuery": "egg", "quantity": 2, "unit": "large"}]}
-                            ],
-                        },
-                    },
-                ],
-            }
+            {"kind": "tool_calls", "calls": [{"name": "search_catalog", "arguments": {"query": "egg"}}]},
+            {"kind": "tool_calls", "calls": [_portion(1), _log(_egg_item(50))]},
         ]
     )
     out = run_interpret(_payload("log an egg and suggest lunch"))
     normalize_outcome(out)
     assert out["pendingAction"]["type"] == "confirm_log"
-    assert out["suggestionOptions"]
+    assert out["suggestionOptions"] == []
 
 
-def test_oil_shot_is_not_a_suggested_meal():
-    def search(query):
-        if "oil" in query.lower():
-            return {
-                "results": [
-                    {
-                        "foodId": "oil_1",
-                        "displayName": "Olive oil",
-                        "source": "usda",
-                        "per100g": {"calories": 884, "proteinG": 0, "carbsG": 0, "fatG": 100},
-                        "family": "oil",
-                        "measures": [{"id": "tbsp", "label": "1 tablespoon", "grams": 13.5}],
-                    }
-                ],
-                "candidatesForClarify": [],
-                "confidence": "high",
-            }
-        return _egg_search(query)
-
-    set_overrides(search=search, fetch_measures=lambda _fid: [])
+def test_oil_portion_is_not_clamped():
+    _install()
     push_mock_turns(
         [
+            {"kind": "tool_calls", "calls": [{"name": "search_catalog", "arguments": {"query": "olive oil"}}]},
             {
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "dinner",
-                            "drafts": [
-                                {
-                                    "title": "Olive oil",
-                                    "items": [{"foodQuery": "olive oil", "quantity": 200, "unit": "ml"}],
-                                }
-                            ],
-                        },
+                        "name": "portion_to_grams",
+                        "arguments": {"quantity": 200, "unit": "ml", "measures": []},
                     }
                 ],
-            }
+            },
+            {"kind": "text", "text": "Olive oil is 200 ml."},
         ]
     )
     out = run_interpret(_payload("what should I eat"))
     normalize_outcome(out)
-    assert out["suggestionOptions"] == []
+    oil = out["suggestionOptions"][0]["items"][0]
+    assert oil["grams"] == 200
 
 
-def test_oil_on_eggs_is_clamped_to_two_tablespoons():
-    def search(query):
-        if "oil" in query.lower():
-            return {
-                "results": [
-                    {
-                        "foodId": "oil_1",
-                        "displayName": "Olive oil",
-                        "source": "usda",
-                        "per100g": {"calories": 884, "proteinG": 0, "carbsG": 0, "fatG": 100},
-                        "family": "oil",
-                        "measures": [{"id": "tbsp", "label": "1 tablespoon", "grams": 13.5}],
-                    }
-                ],
-                "candidatesForClarify": [],
-                "confidence": "high",
-            }
-        return _egg_search(query)
-
-    set_overrides(search=search, fetch_measures=lambda _fid: [])
+def test_unmapped_unit_does_not_become_a_card():
+    _install()
     push_mock_turns(
         [
+            {"kind": "tool_calls", "calls": [{"name": "search_catalog", "arguments": {"query": "egg"}}]},
             {
                 "kind": "tool_calls",
                 "calls": [
                     {
-                        "name": "compose_suggestions",
-                        "arguments": {
-                            "mealSlot": "lunch",
-                            "drafts": [
-                                {
-                                    "title": "Eggs",
-                                    "items": [
-                                        {"foodQuery": "egg", "quantity": 2, "unit": "large"},
-                                        {"foodQuery": "olive oil", "quantity": 200, "unit": "ml"},
-                                    ],
-                                }
-                            ],
-                        },
+                        "name": "portion_to_grams",
+                        "arguments": {"quantity": 1, "unit": "handful", "measures": []},
                     }
                 ],
-            }
+            },
+            {"kind": "text", "text": "I don't know that unit."},
         ]
     )
-    out = run_interpret(_payload("suggest lunch"))
-    normalize_outcome(out)
-    oil = next(item for item in out["suggestionOptions"][0]["items"] if "oil" in item["displayName"].lower())
-    assert oil["grams"] == 27
-    assert "Tbsp" in (oil.get("portionLabel") or "")
+    out = run_interpret(_payload("a handful of egg"))
+    assert out["suggestionOptions"] == []
+    assert out["pendingAction"] is None
 
 
 def test_infra_failure_is_agent_unavailable():
@@ -537,12 +429,12 @@ def test_infra_failure_is_agent_unavailable():
     assert out["pendingAction"] is None
 
 
-def test_bad_args_do_not_search_the_question_as_food():
-    _install_search()
+def test_bad_args_do_not_run_the_tool():
+    _install()
     push_mock_turns(
         [
-            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "new_entry", "arguments": {"items": []}}]},
-            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "new_entry", "arguments": {"items": []}}]},
+            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "search_catalog", "arguments": {"query": ""}}]},
+            {"kind": "tool_calls", "text": "Which egg?", "calls": [{"name": "search_catalog", "arguments": {"query": ""}}]},
         ]
     )
     out = run_interpret(_payload("egg"))
@@ -550,13 +442,14 @@ def test_bad_args_do_not_search_the_question_as_food():
     assert out["assistantMessage"] == "Which egg?"
 
 
-def test_repeat_miss_is_chat():
+def test_unknown_entry_does_not_stage():
     push_mock_turns(
         [
             {
                 "kind": "tool_calls",
-                "calls": [{"name": "repeat_prior_meal", "arguments": {"entryIds": ["missing"]}}],
-            }
+                "calls": [{"name": "delete_food_entry", "arguments": {"day_key": "2026-10-13", "entry_id": "missing"}}],
+            },
+            {"kind": "text", "text": "I can't find that meal."},
         ]
     )
     out = run_interpret(_payload("same breakfast"))
@@ -565,15 +458,101 @@ def test_repeat_miss_is_chat():
 
 
 def test_executor_outputs_normalize():
-    _install_search()
-    from agent.harness.tools.jobs import run_calls
+    _install()
+    from agent.harness.execute import run_calls
 
     req = request_from_dict(_payload("egg"))
-    out = run_calls(
+    _trace, out = run_calls(
         req,
-        [{"name": "new_entry", "arguments": {"items": [{"foodQuery": "egg", "quantity": 1, "unit": "large"}]}}],
+        [
+            {"name": "search_catalog", "arguments": {"query": "egg"}},
+            _portion(1),
+            _log(_egg_item(50)),
+        ],
+        uid="test",
     )
     out.pop("phraseFacts", None)
     out["assistantMessage"] = ""
     normalize_outcome(out)
     assert MacroTotals.model_validate(out["pendingAction"]["payload"]["resolvedItems"][0]["per100g"])
+
+
+def test_confirmed_log_writes_through_log_meal(monkeypatch):
+    seen: dict = {}
+
+    def fake(uid, raw):
+        seen["uid"] = uid
+        seen["raw"] = raw
+        return {"dayKey": raw["dayKey"], "entryId": "e1"}
+
+    monkeypatch.setattr("agent.tools.diary_io.log_meal_for_uid", fake)
+    push_mock_turns([{"kind": "tool_calls", "text": "Logged the egg.", "calls": [_log(_egg_item(50))]}])
+    pending = {
+        "pendingIntent": "confirm_log",
+        "pendingAction": {
+            "type": "confirm_log",
+            "prompt": "",
+            "payload": {
+                "resolvedItems": [
+                    {
+                        "foodId": "seed_egg",
+                        "displayName": "Egg",
+                        "grams": 50,
+                        "per100g": PER,
+                        "source": "seed",
+                    }
+                ]
+            },
+        },
+    }
+    out = run_interpret(
+        _payload(
+            "yes",
+            conversation={"summary": "", "recentTurns": [], "workingMemory": pending},
+        )
+    )
+    assert seen["uid"] == "test"
+    assert seen["raw"]["mealSlot"] == "breakfast"
+    assert seen["raw"]["dayKey"] == "2026-10-13"
+    assert seen["raw"]["items"][0]["name"] == "Egg"
+    assert out["pendingAction"] is None
+    assert out["intent"] == "log_meal"
+    assert "Logged the egg." in out["assistantMessage"]
+
+
+def test_confirm_does_not_write_a_different_food(monkeypatch):
+    def fake(uid, raw):
+        del uid, raw
+        raise AssertionError("write should wait for the same food")
+
+    monkeypatch.setattr("agent.tools.diary_io.log_meal_for_uid", fake)
+    other = {**PER, "calories": 400}
+    push_mock_turns(
+        [{"kind": "tool_calls", "text": "That is a different egg.", "calls": [_log({**_egg_item(50), "per100g": other})]}]
+    )
+    pending = {
+        "pendingIntent": "confirm_log",
+        "pendingAction": {
+            "type": "confirm_log",
+            "prompt": "",
+            "payload": {
+                "resolvedItems": [
+                    {
+                        "foodId": "seed_egg",
+                        "displayName": "Egg",
+                        "grams": 50,
+                        "per100g": PER,
+                        "source": "seed",
+                    }
+                ]
+            },
+        },
+    }
+    out = run_interpret(
+        _payload(
+            "yes",
+            conversation={"summary": "", "recentTurns": [], "workingMemory": pending},
+        )
+    )
+    assert out["pendingAction"]["type"] == "confirm_log"
+    assert out["pendingAction"]["payload"]["resolvedItems"][0]["per100g"]["calories"] == 400

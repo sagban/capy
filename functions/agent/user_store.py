@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from google.cloud.firestore_v1 import Client
 
 from schemas import (
+    DiaryDayEntry,
     DiaryDaySummary,
     DiaryEntry,
     DiaryContext,
@@ -218,7 +219,10 @@ def build_diary_context(uid: str, day_key: str, profile: dict[str, Any]) -> Diar
                 dayKey=key,
                 mealCount=len(meal_ids) or len(day_rows),
                 itemNames=[row.name for row in day_rows],
-                entries=day_rows,
+                entries=[
+                    DiaryDayEntry.model_validate(row.model_dump())
+                    for row in day_rows
+                ],
             )
         )
     return DiaryContext(

@@ -22,7 +22,15 @@ Every authenticated callable (`interpret_meal`, `log_meal`, `patch_profile`, `ge
 
 Implementation: `functions/agent/auth.py` → `resolve_callable_uid`.
 
-## Exchange flow (recommended for MCP)
+## Browser sign-in
+
+`GET /kitchen` on `cappy-api` is a sign-in page. The user enters the same email and password as the iPhone app. `POST /kitchen/session` returns `{ accessToken, tokenType, expiresIn, mcpUrl }` and a config block for an MCP client (`url` + `Authorization: Bearer`). The token lasts 1 hour. The page does not store a session.
+
+`FIREBASE_WEB_API_KEY` (the Firebase web API key) must be set on the service. It is not a Secret Manager value and is not committed.
+
+The iPhone app mints the same token from Settings → MCP token, using the signed-in Firebase user.
+
+## Exchange flow (scripts and Alexa linking)
 
 ```mermaid
 sequenceDiagram
@@ -90,8 +98,7 @@ Generate a local secret (example): `openssl rand -base64 32`
 
 | Mode | URL / transport |
 |------|------------------|
-| **Hosted (Cloud Run)** | `https://{service}-{project-number}.{region}.run.app/mcp/sse` — SSE + `POST /mcp/messages/`; Bearer auth. Also `POST /exchange_access_token` on the same host. See [alexa-setup.md](alexa-setup.md). |
-| **Local stdio** | [`mcp_server/`](../../mcp_server/) subprocess for Cursor; see [mcp_server/README.md](../../mcp_server/README.md). |
+| **Hosted (Cloud Run)** | `https://{service}-{project-number}.{region}.run.app/mcp/` — MCP Streamable HTTP (spec 2025-11-25), `POST` JSON-RPC; Bearer auth. Also `POST /exchange_access_token` on the same host. See [alexa-setup.md](alexa-setup.md). |
 
 ## Alexa
 

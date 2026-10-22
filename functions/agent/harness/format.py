@@ -7,30 +7,88 @@ from typing import Any
 from agent.harness.messaging import looks_like_structured_dump, sanitize_assistant_message
 
 
+def _join_names(names: list[str], *, limit: int = 4) -> str:
+    clean = [n for n in names if n]
+    if not clean:
+        return ""
+    shown = clean[:limit]
+    extra = len(clean) - len(shown)
+    if len(shown) == 1:
+        text = shown[0]
+    elif len(shown) == 2:
+        text = f"{shown[0]} and {shown[1]}"
+    else:
+        text = ", ".join(shown[:-1]) + f", and {shown[-1]}"
+    if extra > 0:
+        text += f" (+{extra} more)"
+    return text
+
+
+def _remaining_bits(budget: dict[str, Any] | None) -> str:
+    if not isinstance(budget, dict):
+        return ""
+    parts: list[str] = []
+    if budget.get("calories") is not None:
+        parts.append(f"{int(round(float(budget['calories'])))} cal")
+    if budget.get("proteinG") is not None:
+        parts.append(f"~{int(round(float(budget['proteinG'])))} g protein")
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]} and {parts[1]}"
+
+
 def summary_from_options(outcome: dict[str, Any]) -> str:
+    """1–2 short paragraphs: day context + a few picks that keep them on track."""
     options = [option for option in (outcome.get("options") or []) if isinstance(option, dict)]
     if not options:
         return ""
-    budget = outcome.get("budget") or {}
-    parts: list[str] = []
-    calories = budget.get("calories")
-    protein = budget.get("proteinG")
-    if calories is not None:
-        line = f"Up to {int(round(float(calories)))} cal"
-        if protein is not None:
-            line += f", about {int(round(float(protein)))} g protein left"
-        parts.append(line + ".")
-    for option in options:
-        title = option.get("title") or "Option"
+
+    day = outcome.get("day") if isinstance(outcome.get("day"), dict) else {}
+    eaten = [str(n).strip() for n in (day.get("eaten") or []) if str(n).strip()]
+    # Prefer slot budget for the pick; fall back to day remaining.
+    budget = outcome.get("budget") if isinstance(outcome.get("budget"), dict) else {}
+    day_remaining = day.get("remaining") if isinstance(day.get("remaining"), dict) else {}
+    left = _remaining_bits(budget) or _remaining_bits(day_remaining)
+
+    eaten_bit = _join_names(eaten)
+    if eaten_bit and left:
+        para1 = (
+            f"So far today you've logged {eaten_bit}. "
+            f"With about {left} left for this meal, these keep you on track:"
+        )
+    elif eaten_bit:
+        para1 = f"So far today you've logged {eaten_bit}. Here are a few picks that fit what's left:"
+    elif left:
+        para1 = f"Clean slate so far — you've got about {left} to work with. A few solid options:"
+    else:
+        para1 = "A few picks that fit what's left:"
+
+    bits: list[str] = []
+    for option in options[:3]:
+        title = str(option.get("title") or "Option").strip() or "Option"
         totals = option.get("totals") or {}
         cal = totals.get("calories")
         pro = totals.get("proteinG")
         if cal is None:
+            bits.append(title)
             continue
-        fit = "over" if option.get("fit") == "over" else "fits"
         protein_bit = f", {int(round(float(pro)))} g protein" if pro is not None else ""
-        parts.append(f"{title}: {int(round(float(cal)))} cal{protein_bit}, {fit}.")
-    return "\n".join(parts)
+        if option.get("fit") == "over":
+            bits.append(
+                f"{title} ({int(round(float(cal)))} cal{protein_bit} — a bit over)"
+            )
+        else:
+            bits.append(f"{title} ({int(round(float(cal)))} cal{protein_bit})")
+    if len(bits) == 1:
+        para2 = f"{bits[0]}. Want that, or something else?"
+    elif len(bits) == 2:
+        para2 = f"{bits[0]}, or {bits[1]}. Want one of these, or something else?"
+    else:
+        para2 = f"{', '.join(bits[:-1])}, or {bits[-1]}. Want one of these, or something else?"
+
+    return f"{para1}\n\n{para2}"
 
 
 def clarify_question(outcome: dict[str, Any]) -> str:
@@ -63,12 +121,19 @@ def no_suggestion_line(outcome: dict[str, Any]) -> str:
     if outcome.get("reason") != "no suggestion survived":
         return ""
     dropped = [str(row) for row in (outcome.get("dropped") or [])]
+    day = outcome.get("day") if isinstance(outcome.get("day"), dict) else {}
+    eaten = [str(n).strip() for n in (day.get("eaten") or []) if str(n).strip()]
+    eaten_bit = _join_names(eaten)
+    prefix = f"Looking at {eaten_bit} already logged — " if eaten_bit else ""
     if any("venue_needs_citation" in row for row in dropped):
         return (
-            "I need that place's menu nutrition to size it — ask again and I'll look it up, "
-            "or log it from Food Log."
+            f"{prefix}I need that place's menu nutrition to size a pick. "
+            "Ask again and I'll look it up, or log it from Food Log."
         )
-    return "I couldn't source a meal from those drafts. Name a food you have, or log it from Food Log."
+    return (
+        f"{prefix}I couldn't land a solid pick from those drafts. "
+        "Name a food you have on hand, or log it from Food Log."
+    )
 
 
 def memory_line(outcome: dict[str, Any]) -> str:

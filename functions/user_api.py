@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from firebase_functions import https_fn
+from pydantic import ValidationError
 
 from agent.auth import resolve_callable_uid
 from agent.thread_store import (
@@ -15,8 +16,8 @@ from agent.thread_store import (
     normalize_thread_id,
     note_day_rollover,
 )
-from agent.harness.search.open_food_facts import lookup_barcode as off_lookup_barcode
-from agent.harness.search.open_food_facts import normalize_gtin
+from agent.tools.search.open_food_facts import lookup_barcode as off_lookup_barcode
+from agent.tools.search.open_food_facts import normalize_gtin
 from agent.user_store import delete_entry as store_delete_entry
 from agent.user_store import delete_library_item as store_delete_library_item
 from agent.user_store import list_library_items as store_list_library_items
@@ -58,8 +59,18 @@ def _validate_items(items: Any) -> list[dict[str, Any]]:
                 message="Each item needs grams.",
             )
         per = item.get("per100g")
-        if isinstance(per, dict):
+        if not isinstance(per, dict):
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                message="Each item needs per100g.",
+            )
+        try:
             MacroTotals.model_validate(per)
+        except ValidationError as exc:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                message="Each item needs per100g with calories, proteinG, carbsG, and fatG.",
+            ) from exc
         out.append(item)
     return out
 

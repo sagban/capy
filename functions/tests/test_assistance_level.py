@@ -1,12 +1,12 @@
 """Assistance dial → per-turn system prompt injection."""
 
-from agent.llm.assistance_level import (
+from agent.harness.prompts.assistance_level import (
     DEFAULT_ASSISTANCE_LEVEL,
     instruction_block_for_assistance_level,
     normalize_assistance_level,
 )
-from agent.llm.prompt import MEAL_AGENT_SYSTEM, meal_agent_system
-from agent.llm.response_style import instruction_block_for_response_style
+from agent.harness.prompts import MEAL_AGENT_SYSTEM, meal_agent_system
+from agent.harness.prompts.response_style import instruction_block_for_response_style
 
 
 def test_normalize_assistance_level_defaults_to_full_assist():

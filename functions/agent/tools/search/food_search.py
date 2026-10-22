@@ -1,8 +1,7 @@
-"""Multi-source food search ranking — correct log > any hit.
+"""Offline scorer for a candidate pool the caller already fetched.
 
-Inspired by fielded BM25 (BM25F), e-commerce broad/narrow query split, and
-nutrition-app personalization (recents / favorites). See
-docs/architecture/food-search-ranking.md.
+The agent does not merge catalog, USDA, and library here. Each source is its
+own Gemini tool. `rank_candidates` remains for the ranking evals.
 """
 
 from __future__ import annotations
@@ -10,11 +9,8 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
-from agent.harness.search.catalog import search_seed
-from agent.harness.search.library_match import match_library
-from agent.harness.search.usda import search_usda_pool
 from schemas import FoodHit, InterpretMealRequest
 
 QueryBreadth = Literal["broad", "narrow"]
@@ -486,106 +482,3 @@ def confidence_for(ranked: list[RankedHit], query: str) -> tuple[str, bool, str]
 # Back-compat name used in older tests.
 def _confidence(ranked: list[RankedHit]) -> tuple[str, bool, str]:
     return confidence_for(ranked, query="")
-
-
-def search_foods(
-    req: InterpretMealRequest,
-    query: str,
-    limit: int = 8,
-    *,
-    include_usda: bool = True,
-) -> dict[str, Any]:
-    q = (query or "").strip()
-    if not q:
-        return {
-            "results": [],
-            "candidatesForClarify": [],
-            "weakHints": [],
-            "confidence": "none",
-            "suggestWebSearch": True,
-            "reason": "empty_query",
-            "sources": [],
-            "cache": "miss",
-            "queryBreadth": "broad",
-        }
-
-    breadth = query_breadth(q)
-    variants = staple_query_variants(q)
-    seed_hits: list[FoodHit] = []
-    usda_hits: list[FoodHit] = []
-    for variant in variants:
-        seed_hits.extend(search_seed(variant, limit=max(12, limit)))
-        if include_usda:
-            usda_hits.extend(search_usda_pool(variant, limit=max(30, limit * 4)))
-
-    library_hits = match_library(q, req.libraryContext or [], limit=3)
-
-    merged: dict[str, FoodHit] = {}
-    # Library first so an exact personal title wins the id slot; ranking still decides order.
-    for h in library_hits + seed_hits + usda_hits:
-        if h.foodId not in merged:
-            merged[h.foodId] = h
-
-    ranked = rank_candidates(list(merged.values()), q, req)
-
-    diets = {d.lower() for d in req.preferenceContext.diets or []}
-    if "vegetarian" in diets or "vegan" in diets:
-        blocked = {"poultry", "fish", "meat", "beef", "pork"}
-        if "vegan" in diets:
-            blocked |= {"dairy", "egg"}
-        ranked = [r for r in ranked if r.hit.family.lower() not in blocked]
-
-    confidence, suggest_web, reason = confidence_for(ranked, q)
-    # Exact library title → high confidence (strict matcher already gated entry).
-    if (
-        ranked
-        and ranked[0].hit.source == "library"
-        and _norm_eq(q, ranked[0].hit.displayName)
-    ):
-        confidence, suggest_web, reason = "high", False, "library_exact"
-
-    top = ranked[:limit]
-    packed = [
-        {
-            "foodId": r.hit.foodId,
-            "displayName": r.hit.displayName,
-            "source": r.hit.source,
-            "per100g": r.hit.per100g.model_dump(),
-            "family": r.hit.family,
-            "measures": [m.model_dump() for m in (r.hit.measures or [])],
-            "score": round(r.score, 2),
-            "unexplainedTokens": r.unexplained,
-            "features": {k: round(v, 3) for k, v in r.features.items()},
-        }
-        for r in top
-    ]
-
-    results = [] if confidence == "low" else packed
-    cache = "hit" if seed_hits or library_hits else ("usda" if usda_hits else "miss")
-    sources: list[str] = []
-    if library_hits:
-        sources.append("library")
-    if seed_hits:
-        sources.append("seed")
-    if any(h.source == "usda_branded" for h in usda_hits):
-        sources.append("usda_branded")
-    if any(h.source == "usda" for h in usda_hits):
-        sources.append("usda")
-
-    return {
-        "results": results,
-        "candidatesForClarify": packed[:5],
-        "weakHints": [p["displayName"] for p in packed[:3]] if confidence == "low" else [],
-        "cache": cache,
-        "confidence": confidence,
-        "suggestWebSearch": suggest_web,
-        "reason": reason,
-        "sources": sources,
-        "queryBreadth": breadth,
-    }
-
-
-def _norm_eq(a: str, b: str) -> bool:
-    return re.sub(r"\s+", " ", (a or "").strip().lower()) == re.sub(
-        r"\s+", " ", (b or "").strip().lower()
-    )

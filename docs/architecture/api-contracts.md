@@ -11,11 +11,12 @@ Authorization: Bearer <Firebase ID token | Cappy access token>
 ```
 
 - **iOS:** Firebase SDK callables (ID token attached automatically).
+- **MCP token page:** `GET /kitchen` on `cappy-api`. `POST /kitchen/session` with `{ email, password }` returns `{ accessToken, tokenType, expiresIn, mcpUrl }` for an MCP client. The iPhone app mints the same token from Settings.
 - **HTTP / MCP / Alexa:** Callable HTTP with `Authorization: Bearer`, or mint a 1h access token via `exchange_access_token`.
 
 Full flow: [external-auth.md](external-auth.md). MCP tools: [mcp-tools.md](mcp-tools.md).
 
-Reject unauthenticated requests. App Check: document in Phase 0; enforce in Phase 3+.
+Reject unauthenticated requests. App Check is not enforced.
 
 ### `exchange_access_token` (callable, unauthenticated)
 
@@ -54,7 +55,7 @@ Authenticated merge into `users/{uid}`. Allowed keys: `timezone`, `dailyTarget`,
 }
 ```
 
-Returns `{ "dayKey", "entryId" }`. Replays with the same `clientMutationId` return the original ids.
+Returns `{ "dayKey", "entryId" }`. Each item needs `name`, `grams`, and `per100g`. Replays with the same `clientMutationId` return the original ids.
 
 ### `delete_meal` (callable)
 
@@ -145,7 +146,7 @@ Miss / unusable product:
 
 ### `interpretMeal` server context
 
-Set `"useServerContext": true` on the interpret request to build diary/profile/thread/library from Firestore instead of inline snapshots. iOS encodes `utterance`, `timezone`, `dayKey`, optional `threadId`, `useServerContext`, and a compact `libraryContext` snapshot (merged with server library). Conversation is stored at `users/{uid}/threads/{threadId}`; `interpret_meal` returns an updated `conversation` on success. Omit or `false` to keep the legacy client snapshot.
+`"useServerContext": true` loads diary, profile, thread, and library from Firestore. The iPhone sends `utterance`, `timezone`, `dayKey`, optional `threadId`, that flag, and a compact `libraryContext` (merged with the server library). The thread is `users/{uid}/threads/{threadId}`. The response includes the updated `conversation`. `false` uses the snapshots on the request.
 
 ## `interpretMeal` (primary)
 
@@ -210,7 +211,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `conversation.threadId` defaults to `"default"` (LangGraph checkpoint thread is `{uid}:{threadId}`).
 
-`memorySnapshot` remains for #37 compatibility; clients should prefer `preferenceContext` + `diaryContext` + `longTermMemory` + `conversation`.
+Clients send preferences on `preferenceContext`, the diary on `diaryContext`, notes on `longTermMemory`, and the thread on `conversation`. `memorySnapshot` is an extra copy of preferences and recent corrections.
 
 `conversation.workingMemory` also carries `resolveQueue`, `lastSuggestionOptions`, and `draftLog`. With `useServerContext`, the server persists `workingMemory` on `users/{uid}/threads/{threadId}` and returns the updated `conversation` on `interpret_meal`.
 
@@ -262,7 +263,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `pendingAction.type`: `clarify_portion` | `clarify_food` | `confirm_log` | `confirm_correction` | `confirm_delete` | null
 
-`suggestionOptions` are stored for the next turn (`workingMemory.lastSuggestionOptions`). The Capy tab does not render them as cards. Totals are harness-computed. Logging one is a later `new_entry` call with `optionId` (and optional `ops`), which stages the meal for human-in-the-loop confirm (`confirm_log`). `confirm_correction` also uses that sheet.
+`suggestionOptions` are stored on `workingMemory.lastSuggestionOptions` for the next turn. The Capy tab shows them as chat, not cards. Totals are summed from hits the model already looked up and portioned. Logging one is a later `write_food_entry`. The first in-app `write_food_entry` returns pending `confirm_log`. The confirmed call writes it. `confirm_correction` uses the same sheet.
 
 `confirm_log` payload `resolvedItems`: `{ foodId, displayName, grams, per100g, source, citationUrl?, portionLabel? }`. `source`: `catalog` | `usda` | `usda_branded` | `web` | `diary`. `web` is a cited per-100g density that passed the Atwater check; the web worker may convert a cited serving to per 100 g. Code multiplies grams.
 
@@ -274,7 +275,7 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 
 `assistantMessage` may be empty when the confirm sheet carries the turn. Prefer the model's human chat prose; if that draft is empty or is a tool/ResolvedItem dump, the harness drops the dump and falls back to a short factual line (e.g. confirm_log item names or suggestion totals). Structured fields (`pendingAction`, `candidates`, `suggestionOptions`) are validated separately and never shown as chat. `warnings` includes `agent_unavailable` only after a model or network failure; the client shows Retry and does not invent a sentence.
 
-`memoryProposals.action`: `add` | `update` | `delete`. The client applies them. There is no `confirm_memory` pause.
+`memoryProposals.action`: `add` | `update` | `delete`. The harness adds one when the utterance starts with "remember" or "forget". The client applies it in the Capy Memory sheet. There is no confirm step for a note.
 
 ### Response (memory update)
 
@@ -290,8 +291,6 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 }
 ```
 
-`memoryProposals.action`: `add` | `update` | `delete`. Client applies automatically; user can edit in Capy Memory sheet.
-
 ### Response (needs clarification)
 
 ```json
@@ -304,48 +303,34 @@ There is no `action` field. Follow-ups are the next `utterance`. Clarify labels 
 }
 ```
 
-## Tools the model may call
+## Shared tools
+
+The in-app model and MCP use the same functions. Names and when-to-use text live in `functions/agent/tools/`. Layout: [harness.md](harness.md).
 
 | Tool | Effect |
 |------|--------|
-| `new_entry` | Stage a new meal entry for HITL `confirm_log`: resolve `items`, edit with `ops`, or start from `optionId` (stored suggestion). Catalog/USDA search and portions run in code; optional item `portionMacros` + `citationUrl` (menu macros for that quantity+unit) commits as `web`/`estimate` when Atwater checks pass. |
-| `compose_suggestions` | Non-blocking chat suggestions. Optional `appetite` (`light` \| `normal` \| `hearty`) scales the guide; optional `budget` sets an explicit ceiling. Every item needs a household serving (tbsp, cup, piece), not leftover calories as oil. Restaurant drafts should set `venue`/`brandOrVenue` and pass cited `portionMacros` (USDA is skipped for venue items). |
-| `repeat_prior_meal` | Copy diary rows by `entryId`. |
-| `edit_entry` | `confirm_correction` for one `entryId` + `itemIndex` (`set_amount` \| `replace` \| `remove`). |
-| `delete_entry` | `confirm_delete` for a whole `entryId` (optional `dayKey`). User confirms, then `delete_meal` writes Firestore. |
-| `save_memory` | `memoryProposals`. Can accompany any other tool. |
+| `search_catalog` | Seed-catalog hits. Does not log. |
+| `search_usda` | USDA FoodData Central hits, in FDC order. Does not log. |
+| `search_library` | Strict match on the saved library. The wrapper loads the rows. Does not log. |
+| `lookup_barcode` | Open Food Facts for one GTIN. Miss is `{ "found": false }`. Does not log. |
+| `portion_to_grams` | `{grams, label}` from a quantity, a unit, and the hit's measures. `{unmapped: true}` when the unit is unknown. |
+| `get_diary` | `{dayKey, entries, remaining}`. |
+| `write_food_entry` | Writes one entry. `kind` is `food`, `recipe`, or `meal`. Requires `name`, `grams`, and `per100g`. `entry_id` replaces that one entry. The iPhone callable that can still send an item list is `log_meal`. |
+| `delete_food_entry` | Deletes one `entry_id` on `day_key`. The iPhone callable is `delete_meal`. |
 
-The meal model also has **Google Search grounding** on the same Vertex `generate_content` call (not a harness tool). Requires Gemini 3+ (`VERTEX_GEMINI_MODEL`, default `gemini-3.5-flash`) at Vertex location `global` — Gemini 2.5 rejects mixing `google_search` with function tools.
+Google Search grounding is on the same Vertex `generate_content` call. It is not a harness tool. Model: Gemini 3+ (`VERTEX_GEMINI_MODEL`, default `gemini-3.5-flash`) at location `global`.
 
-Tools are LangChain `@tool` functions in `functions/agent/harness/tools/registry.py`. Executors live in `jobs.py`. Gemini sees those descriptions and JSON Schema (including when-to-use guidance and examples in each tool docstring). Request context is `InjectedToolArg`, not a model parameter. The system prompt in `functions/agent/llm/prompt.py` covers persona, context-pack grounding, trust boundaries, Google Search, orchestration, assistance level, and global food rules — not per-tool parameter playbooks.
+The in-app wrapper marks a hit that breaks a diet or names an allergy with `conflict` (`diet` or `allergy`) and still returns it. The first in-app `write_food_entry` or `delete_food_entry` stages a confirm and does not write. MCP writes on the call. Displayed totals are computed on the iPhone from confirmed grams and per-100g.
 
-`search_food`, web nutrition, and `scale_portion` are internal. `scale_portion` requires grams. There is no same-day miss cache. `calc_macros` stays in Swift.
+Firebase callables in `main.py` are the iOS edge. `interpret_meal` enters the graph. `log_meal`, `delete_meal`, barcode, and library callables call `user_api` directly. Tools call those same `user_api` functions. They do not call the callable handlers.
 
-## `searchFood`
+### Search hit shape
 
-### Request
+`search_catalog`, `search_usda`, and `search_library` return `{ "source", "hits": [ { "foodId", "displayName", "source", "per100g", "family", "measures" } ] }`. `source` is `catalog`, `usda`, or `library`. Catalog hits stay in seed order. USDA hits stay in FoodData Central order.
 
-```json
-{ "query": "paneer", "limit": 10 }
-```
+`lookup_barcode` returns the Open Food Facts dict: a hit with `found: true`, or `{ "found": false }`.
 
-### Response
-
-```json
-{
-  "results": [
-    {
-      "foodId": "seed_paneer",
-      "displayName": "Paneer",
-      "source": "seed",
-      "per100g": { "calories": 265, "proteinG": 18, "carbsG": 1.2, "fatG": 20 }
-    }
-  ],
-  "cache": "hit"
-}
-```
-
-Note: `per100g` here is **catalog data** from DB/USDA (deterministic), not an LLM invention. The LLM must not invent these fields; the tool fills them after lookup.
+The tool functions return the source's hits. Inside the iPhone `interpret_meal` callable, a conflicting hit stays in that list with `conflict` set to `diet` or `allergy`. MCP lookups return the source result with no `conflict` field.
 
 ## Error shape
 

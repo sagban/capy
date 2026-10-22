@@ -52,7 +52,7 @@ npx -y firebase-tools@latest deploy --only functions --project capy-dogfood
 
 ## USDA behavior
 
-1. `search_food` pulls seed + USDA Branded/Foundation/SR into a pool; `food_search` ranks for logging confidence (not “branded first”)
+1. The model calls `search_catalog`, `search_usda`, or `search_library` on its own. `search_items` / `compose_suggestions` resolve drafts through the seed catalog only, then drop diet conflicts. USDA is not merged into that path.
 2. Incomplete nutrient records dropped; same-day miss cache when the pool is empty
 3. Low confidence / unresolved query tokens → `suggestWebSearch` (resolve via web, then search again)
 

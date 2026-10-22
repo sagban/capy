@@ -38,7 +38,7 @@ _NOISE = (
     "imitation",
 )
 
-# …/functions/agent/harness/search/catalog.py → functions = parents[3], repo = parents[4]
+# …/functions/agent/tools/search/catalog.py → functions = parents[3], repo = parents[4]
 _FUNCTIONS_ROOT = Path(__file__).resolve().parents[3]
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _SEED_CANDIDATES = [
@@ -263,7 +263,3 @@ def get_food(food_id: str) -> FoodHit | None:
         if hit.foodId == food_id:
             return hit
     return None
-
-
-def templates() -> list[dict]:
-    return list(load_seed().get("templates", []))

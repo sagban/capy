@@ -26,8 +26,7 @@ Multi-ingredient dishes are stored outside `foodCorpus`.
 
 ## Scripts
 
-- `scripts/migrate_composites_to_recipes.py` — one-off: copy existing `foodCorpus` `dataType==composite` → `recipes` (leaves old corpus rows for rollback).
-- `scripts/import_seed_food_corpus.py` — writes foods/templates to `foodCorpus` and composites to `recipes`.
+- `scripts/import_seed_food_corpus.py` — writes foods and templates to `foodCorpus`, and composites to `recipes`.
 
 ## iOS Library recipes & meals (local)
 
@@ -37,8 +36,4 @@ Multi-ingredient dishes are stored outside `foodCorpus`.
 - Logging a library recipe or meal still logs **one serving** (summed macros) via Manual Log.
 - User library (food / recipe / meal) syncs to Firestore `users/{uid}/library/{id}` via `upsert_library_item` / `delete_library_item` / `list_library`.
 
-## Follow-up
-
-- `catalog.search_seed`: optionally search `recipes` by name (separate from staple foods).
-- `SeedImporter`: stop rolling seed composites into a single `Food` per 100g when clients read `recipes` only.
-- Delete legacy composite docs from `foodCorpus` after clients read `recipes`.
+`search_seed` searches staple foods in the seed catalog. It does not query this `recipes` collection.

@@ -14,7 +14,7 @@ APPETITE_TO_MULTIPLIER: dict[AppetiteLevel, float] = {
     "hearty": 1.45,
 }
 
-from agent.harness.meal_slots import (
+from agent.harness.memory.meal_slots import (
     is_ancillary_slot,
     planned_slot_names,
     resolve_slot_name,
@@ -127,17 +127,19 @@ def _median_macros(samples: list[MacroTotals]) -> MacroTotals:
 
 
 def default_share_for_plan_index(slot_index: int, plan_size: int) -> float:
-    """Share of remaining for this slot when history is thin. Last planned meal uses full remaining."""
+    """Share of remaining when history is thin. The last planned meal uses what is left."""
     if plan_size <= 1:
         return 1.0
     if slot_index >= plan_size - 1:
         return 1.0
-    early_slots = plan_size - 1
-    if early_slots == 1:
+    if plan_size == 2:
         return 0.35
-    # Light early meals, ramping toward the finisher (matches ~22% / ~35% for a 3-meal plan).
+    # A breakfast / lunch / dinner day: 22%, then 35%, then whatever is left.
+    if plan_size == 3:
+        return 0.22 if slot_index == 0 else 0.35
+    early_slots = plan_size - 1
     t = slot_index / max(early_slots - 1, 1)
-    return 0.18 + t * 0.20
+    return 0.22 + t * 0.13
 
 
 def _ancillary_budget(remaining: MacroTotals) -> dict[str, float]:
@@ -290,7 +292,7 @@ def slot_budget(
 
 def logged_main_slots(diary: DiaryContext) -> set[str]:
     """Deprecated alias: slots with food logged today (any name)."""
-    from agent.harness.meal_slots import logged_slot_keys_today
+    from agent.harness.memory.meal_slots import logged_slot_keys_today
 
     return logged_slot_keys_today(diary)
 

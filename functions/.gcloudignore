@@ -1,0 +1,14 @@
+.env
+.env.*
+.secret.local
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+*.pyc
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+tests/

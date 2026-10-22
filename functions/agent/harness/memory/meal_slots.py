@@ -1,9 +1,6 @@
-"""Meal slot names and order from the user's plan and diary — not a fixed breakfast/lunch/dinner list."""
+"""Meal slot names and order from the user's plan. Breakfast, lunch, and dinner when they have none."""
 
 from __future__ import annotations
-
-from collections import Counter
-from typing import Any
 
 from schemas import DiaryContext, InterpretMealRequest, MealPlanSlot
 
@@ -23,42 +20,14 @@ def meal_plan_from_context(diary: DiaryContext) -> list[MealPlanSlot]:
     return sorted(enabled, key=lambda s: (s.sortOrder, _norm(s.name).lower()))
 
 
-def _entries_with_slot(diary: DiaryContext) -> list[tuple[str, str]]:
-    """(canonical slot name, norm key) from today and history."""
-    found: list[tuple[str, str]] = []
-    seen: set[str] = set()
-
-    def take(entries: list[Any]) -> None:
-        for entry in entries:
-            raw = _norm(getattr(entry, "mealSlot", None))
-            if not raw:
-                continue
-            key = _norm_key(raw)
-            if key in seen:
-                continue
-            seen.add(key)
-            found.append((raw, key))
-
-    take(list(diary.today or []))
-    for day in diary.previousDays or []:
-        take(list(day.entries or []))
-
-    return found
-
-
-def infer_slots_from_diary(diary: DiaryContext) -> list[str]:
-    """When no meal plan is sent, infer slot names from diary usage (stable order of first seen)."""
-    return [name for name, _ in _entries_with_slot(diary)]
+_DEFAULT_PLAN = ("Breakfast", "Lunch", "Dinner")
 
 
 def planned_slot_names(req: InterpretMealRequest) -> list[str]:
     plan = meal_plan_from_context(req.diaryContext)
     if plan:
         return [slot.name for slot in plan]
-    inferred = infer_slots_from_diary(req.diaryContext)
-    if inferred:
-        return inferred
-    return []
+    return list(_DEFAULT_PLAN)
 
 
 def resolve_slot_name(meal_slot: str | None, req: InterpretMealRequest) -> str:

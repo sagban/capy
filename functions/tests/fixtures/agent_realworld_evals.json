@@ -1,105 +1,37 @@
 {
-  "version": 1,
-  "description": "Real-world harness evals (mock LLM tool calls). Assert resolve/suggest outcomes users hit in dogfood.",
+  "version": 2,
+  "description": "Shared-tool harness evals. A log is search, portion_to_grams, then log_meal.",
   "cases": [
     {
-      "id": "venue_menu_with_portion_macros",
-      "utterance": "I'm at First Cup Coffee, suggest something from their menu",
+      "id": "cited_menu_item_stages",
+      "utterance": "log an iced latte from First Cup",
       "mock_turns": [
         {
           "kind": "tool_calls",
+          "text": "Ready to log the iced latte.",
           "calls": [
             {
-              "name": "compose_suggestions",
+              "name": "write_food_entry",
               "arguments": {
-                "venue": "First Cup Coffee",
-                "mealSlot": "Snacks",
-                "drafts": [
-                  {
-                    "title": "Iced Latte",
-                    "items": [
-                      {
-                        "foodQuery": "iced latte",
-                        "quantity": 12,
-                        "unit": "fl oz",
-                        "brandOrVenue": "First Cup Coffee",
-                        "portionMacros": {
-                          "calories": 150,
-                          "proteinG": 8,
-                          "carbsG": 18,
-                          "fatG": 5
-                        },
-                        "citationUrl": "https://example.com/first-cup-menu",
-                        "displayName": "Iced Latte"
-                      }
-                    ]
-                  },
-                  {
-                    "title": "Spinach Feta Sandwich",
-                    "items": [
-                      {
-                        "foodQuery": "Spinach Feta Egg White Sandwich",
-                        "quantity": 1,
-                        "unit": "sandwich",
-                        "brandOrVenue": "First Cup Coffee",
-                        "portionMacros": {
-                          "calories": 290,
-                          "proteinG": 19,
-                          "carbsG": 34,
-                          "fatG": 8
-                        },
-                        "citationUrl": "https://toast.app",
-                        "displayName": "Spinach Feta & Egg White Sandwich"
-                      }
-                    ]
-                  }
-                ]
+                "day_key": "2026-10-19",
+                "meal_slot": "Snacks",
+                "kind": "food",
+                "name": "Iced Latte",
+                "grams": 355,
+                "foodId": "web_latte",
+                "source": "web",
+                "citationUrl": "https://example.com/first-cup-menu",
+                "per100g": {"calories": 42, "proteinG": 2.3, "carbsG": 5.1, "fatG": 1.4}
               }
             }
           ]
         }
       ],
       "expect": {
-        "intent": "suggest_meal",
-        "minOptions": 2,
-        "optionSourcesAny": ["web"],
-        "pendingAction": null
-      }
-    },
-    {
-      "id": "venue_without_macros_fails_fast",
-      "utterance": "Suggest something from First Cup Coffee",
-      "mock_turns": [
-        {
-          "kind": "tool_calls",
-          "calls": [
-            {
-              "name": "compose_suggestions",
-              "arguments": {
-                "venue": "First Cup Coffee",
-                "drafts": [
-                  {
-                    "title": "Mystery Toast",
-                    "items": [
-                      {
-                        "foodQuery": "avocado toast special",
-                        "quantity": 1,
-                        "unit": "serving",
-                        "brandOrVenue": "First Cup Coffee"
-                      }
-                    ]
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      ],
-      "expect": {
-        "intent": "unknown",
-        "minOptions": 0,
-        "assistantContainsAny": ["menu nutrition", "couldn't source"],
-        "pendingAction": null
+        "intent": "log_meal",
+        "pendingAction": "confirm_log",
+        "resolvedSources": ["web"],
+        "resolvedNamesAny": ["Iced Latte"]
       }
     },
     {
@@ -115,32 +47,41 @@
           "carbsG": 48,
           "fatG": 14,
           "servingGrams": 400
-        },
-        {
-          "id": "lib-chicken-feast",
-          "name": "Sunday Chicken Feast",
-          "kind": "meal",
-          "calories": 900,
-          "proteinG": 60,
-          "carbsG": 70,
-          "fatG": 30,
-          "servingGrams": 500
         }
       ],
       "mock_turns": [
         {
           "kind": "tool_calls",
+          "calls": [{"name": "search_library", "arguments": {"query": "Gym Bowl"}}]
+        },
+        {
+          "kind": "tool_calls",
           "calls": [
             {
-              "name": "new_entry",
+              "name": "portion_to_grams",
               "arguments": {
-                "items": [
-                  {
-                    "foodQuery": "Gym Bowl",
-                    "quantity": 1,
-                    "unit": "serving"
-                  }
-                ]
+                "quantity": 1,
+                "unit": "serving",
+                "measures": [{"id": "serving", "label": "1 serving", "grams": 400}]
+              }
+            }
+          ]
+        },
+        {
+          "kind": "tool_calls",
+          "calls": [
+            {
+              "name": "write_food_entry",
+              "arguments": {
+                "day_key": "2026-10-19",
+                "meal_slot": "lunch",
+                "kind": "meal",
+                "name": "Gym Bowl",
+                "grams": 400,
+                "foodId": "library_lib-gym-bowl",
+                "source": "library",
+                "ingredientFamily": "meal",
+                "per100g": {"calories": 130, "proteinG": 10.5, "carbsG": 12, "fatG": 3.5}
               }
             }
           ]
@@ -171,82 +112,61 @@
       "mock_turns": [
         {
           "kind": "tool_calls",
+          "calls": [{"name": "search_library", "arguments": {"query": "chicken"}}]
+        },
+        {
+          "kind": "tool_calls",
+          "calls": [{"name": "search_catalog", "arguments": {"query": "chicken"}}]
+        },
+        {
+          "kind": "tool_calls",
           "calls": [
             {
-              "name": "new_entry",
+              "name": "write_food_entry",
               "arguments": {
-                "items": [
-                  {
-                    "foodQuery": "chicken",
-                    "quantity": 150,
-                    "unit": "g"
-                  }
-                ]
+                "day_key": "2026-10-19",
+                "meal_slot": "lunch",
+                "kind": "food",
+                "name": "Chicken breast, grilled",
+                "grams": 100,
+                "foodId": "usda_chicken_breast",
+                "source": "usda",
+                "ingredientFamily": "poultry",
+                "per100g": {"calories": 165, "proteinG": 31, "carbsG": 0, "fatG": 3.6}
               }
             }
           ]
         }
       ],
       "expect": {
+        "intent": "log_meal",
         "pendingAction": "confirm_log",
+        "resolvedSources": ["usda"],
         "resolvedSourcesExclude": ["library"]
       }
     },
     {
-      "id": "staple_egg_portion_clarifies",
-      "utterance": "I had 6 liquid egg whites",
-      "mock_turns": [
-        {
-          "kind": "tool_calls",
-          "calls": [
-            {
-              "name": "new_entry",
-              "arguments": {
-                "items": [
-                  {
-                    "foodQuery": "liquid egg whites",
-                    "quantity": 6,
-                    "unit": "serving"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      ],
-      "expect": {
-        "pendingActionAny": ["clarify_portion", "confirm_log", "clarify_food"],
-        "notIntent": null
-      }
-    },
-    {
-      "id": "suggest_then_log_option_id",
+      "id": "suggest_then_log",
       "utterance": "suggest lunch",
-      "searchStub": "egg",
       "mock_turns": [
+        {
+          "kind": "tool_calls",
+          "calls": [{"name": "search_catalog", "arguments": {"query": "egg"}}]
+        },
         {
           "kind": "tool_calls",
           "calls": [
             {
-              "name": "compose_suggestions",
+              "name": "portion_to_grams",
               "arguments": {
-                "mealSlot": "Lunch",
-                "drafts": [
-                  {
-                    "title": "Eggs",
-                    "items": [
-                      {
-                        "foodQuery": "egg",
-                        "quantity": 2,
-                        "unit": "large"
-                      }
-                    ]
-                  }
-                ]
+                "quantity": 2,
+                "unit": "large",
+                "measures": [{"id": "large", "label": "1 large", "grams": 50}]
               }
             }
           ]
-        }
+        },
+        {"kind": "text", "text": "Eggs fit lunch."}
       ],
       "followUp": {
         "utterance": "log that",
@@ -255,17 +175,22 @@
             "kind": "tool_calls",
             "calls": [
               {
-                "name": "new_entry",
+                "name": "write_food_entry",
                 "arguments": {
-                  "optionId": "$firstOptionId"
+                  "day_key": "2026-10-19",
+                  "meal_slot": "Lunch",
+                  "kind": "food",
+                  "name": "Egg",
+                  "grams": 100,
+                  "foodId": "seed_egg",
+                  "source": "seed",
+                  "per100g": {"calories": 155, "proteinG": 13, "carbsG": 1.1, "fatG": 11}
                 }
               }
             ]
           }
         ],
-        "expect": {
-          "pendingAction": "confirm_log"
-        }
+        "expect": {"pendingAction": "confirm_log"}
       },
       "expect": {
         "intent": "suggest_meal",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent.harness.search.open_food_facts import (
+from agent.tools.search.open_food_facts import (
     gtin_lookup_candidates,
     lookup_barcode,
     map_product,

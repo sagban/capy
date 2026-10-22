@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.llm import model_turn
+from agent.llm.model import generate
 from agent.harness.format import format_message
-from agent.harness.tools.jobs import run_calls
+from agent.harness.execute import run_calls
 from agent.harness.memory.assemble import build_pack
 from agent.harness.outcomes import OutcomeError, normalize_outcome
 from agent.harness.messaging import sanitize_assistant_message
+from agent.harness.prompts import turn_prompt
+from agent.harness.tool_args import validate_calls
+from agent.tools.registry import TOOL_DECLARATIONS
 from schemas import InterpretMealRequest, MealIntent, request_from_dict
+
+MAX_TOOL_ROUNDS = 12
 
 
 def unavailable(warnings: list[str] | None = None) -> dict[str, Any]:
@@ -48,7 +53,23 @@ def prepare(request: dict[str, Any]) -> dict[str, Any]:
         "model_text": "",
         "outcome": {},
         "response": {},
+        "tool_trace": [],
+        "rounds": 0,
     }
+
+
+def _read_model(result: dict[str, Any]) -> dict[str, Any]:
+    kind = result.get("kind")
+    if kind == "error":
+        return {"kind": "error", "message": result.get("message") or "unavailable"}
+    if kind == "tool_calls":
+        calls = list(result.get("calls") or [])
+        text = str(result.get("text") or "")
+        err = validate_calls(calls)
+        if err:
+            return {"kind": "bad_args", "message": err, "text": text}
+        return {"kind": "tool_calls", "calls": calls, "text": text}
+    return {"kind": "text", "text": str(result.get("text") or "")}
 
 
 def call_model(state: dict[str, Any]) -> dict[str, Any]:
@@ -60,11 +81,20 @@ def call_model(state: dict[str, Any]) -> dict[str, Any]:
     last_text = ""
     while attempts < 2:
         attempts += 1
-        result = model_turn(
+        packed = turn_prompt(
             req,
             context_pack,
             validation_error=validation_error,
+            tool_trace=list(state.get("tool_trace") or []),
         )
+        result = _read_model(generate(
+            packed["system"],
+            packed["user"],
+            packed["history"],
+            tools=TOOL_DECLARATIONS,
+            tool_exchange=packed["tool_exchange"],
+            temperature=packed["temperature"],
+        ))
         if result.get("kind") == "error":
             infra += 1
             if infra >= 2:
@@ -80,13 +110,17 @@ def call_model(state: dict[str, Any]) -> dict[str, Any]:
                 }
             validation_error = str(result.get("message") or "bad arguments")
             continue
+        previous = str(state.get("model_text") or "")
         if result.get("kind") == "tool_calls":
+            text = str(result.get("text") or "") or previous
             return {
                 "calls": list(result.get("calls") or []),
-                "model_text": str(result.get("text") or ""),
-                "outcome": {},
+                "model_text": text,
             }
-        text = str(result.get("text") or "")
+        text = str(result.get("text") or "") or previous
+        existing = state.get("outcome") or {}
+        if existing.get("intent"):
+            return {"calls": [], "model_text": text}
         return {
             "calls": [],
             "model_text": text,
@@ -101,19 +135,39 @@ def run_environment(state: dict[str, Any]) -> dict[str, Any]:
     if not calls:
         return {"outcome": empty_chat_outcome(model_text=str(state.get("model_text") or ""))}
     try:
-        outcome = run_calls(req, calls)
+        prior = list(state.get("tool_trace") or [])
+        trace, outcome = run_calls(
+            req,
+            calls,
+            uid=state.get("uid"),
+            trace=prior,
+        )
+        round_index = int(state.get("rounds") or 0) + 1
+        for step in trace[len(prior) :]:
+            step["round"] = round_index
     except Exception as exc:  # noqa: BLE001
-        outcome = {"error": "bad_args", "message": str(exc)}
-    if outcome.get("error") == "bad_args":
         return {"outcome": empty_chat_outcome(model_text=str(state.get("model_text") or ""))}
-    return {"outcome": outcome}
+    return {
+        "tool_trace": trace,
+        "outcome": outcome,
+        "rounds": int(state.get("rounds") or 0) + 1,
+        "calls": [],
+    }
 
 
 def format_reply(state: dict[str, Any]) -> dict[str, Any]:
     outcome = dict(state.get("outcome") or {})
     if "agent_unavailable" in (outcome.get("warnings") or []):
         return {"outcome": outcome}
-    facts = outcome.get("phraseFacts") or {}
+    from agent.harness.save_memory import proposals_for_utterance
+    from schemas import InterpretMealRequest
+
+    req = InterpretMealRequest.model_validate(state["req"])
+    extra = [item.model_dump(mode="json") for item in proposals_for_utterance(req)]
+    facts = dict(outcome.get("phraseFacts") or {})
+    if extra:
+        outcome["memoryProposals"] = list(outcome.get("memoryProposals") or []) + extra
+        facts["memory"] = list(facts.get("memory") or []) + extra
     draft = state.get("model_text") or outcome.pop("_model_text", "") or ""
     message = format_message(draft=draft, outcome=facts)
     outcome["assistantMessage"] = message

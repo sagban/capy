@@ -1,10 +1,14 @@
-"""Diet constraints for suggestions. Code enforces them; the model does not."""
+"""Diet constraints. Lookup tools return the source's hits.
+
+The in-app wrapper calls `hit_blocked_by_diet` and marks `conflict: diet` on the hit. The hit stays in the result.
+"""
 
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
+from agent.tools.registry import LOOKUP_NAMES
 from schemas import InterpretMealRequest, MemoryProposal
 
 _MEAT_FAMILIES = frozenset({"poultry", "beef", "pork", "lamb", "meat", "game"})
@@ -121,6 +125,59 @@ def _blocked(diets: list[str]) -> tuple[set[str], set[str]]:
         families |= _DAIRY_FAMILIES
         tokens |= _DAIRY_TOKENS
     return families, tokens
+
+
+def _allergy_blocked(name: str, allergies: list[str]) -> bool:
+    blob = (name or "").lower()
+    words = set(re.findall(r"[a-z0-9]+", blob))
+    for raw in allergies or []:
+        token = (raw or "").strip().lower()
+        if not token:
+            continue
+        if token in blob or token in words:
+            return True
+    return False
+
+
+def _conflict(name: str, family: str, diets: list[str], allergies: list[str]) -> str | None:
+    if _allergy_blocked(name, allergies):
+        return "allergy"
+    if hit_blocked_by_diet(name, family, diets):
+        return "diet"
+    return None
+
+
+def annotate_lookup(name: str, result: dict[str, Any], req: InterpretMealRequest) -> dict[str, Any]:
+    """Keep every hit. Mark a diet or allergy conflict so the model can say why."""
+    if name not in LOOKUP_NAMES or not isinstance(result, dict):
+        return result
+    diets = diets_for(req)
+    allergies = list(req.preferenceContext.allergies or [])
+    if name == "lookup_barcode":
+        if not result.get("found"):
+            return result
+        marked = dict(result)
+        conflict = _conflict(str(result.get("displayName") or ""), str(result.get("family") or ""), diets, allergies)
+        if conflict:
+            marked["conflict"] = conflict
+        return marked
+    hits = []
+    for hit in result.get("hits") or []:
+        if not isinstance(hit, dict):
+            continue
+        marked = dict(hit)
+        conflict = _conflict(str(hit.get("displayName") or ""), str(hit.get("family") or ""), diets, allergies)
+        if conflict:
+            marked["conflict"] = conflict
+        hits.append(marked)
+    annotated = dict(result)
+    annotated["hits"] = hits
+    return annotated
+
+
+def hit_blocked_by_diet(name: str, family: str, diets: list[str]) -> bool:
+    """Drop this retrieved hit before it is logged or suggested."""
+    return item_breaks_diet(name, family, diets)
 
 
 def item_breaks_diet(name: str, family: str, diets: list[str]) -> bool:

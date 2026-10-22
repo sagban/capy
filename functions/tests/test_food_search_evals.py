@@ -1,7 +1,8 @@
-"""Golden eval suite for food_search — the ranking moat.
+"""Golden eval suite for the offline ranker.
 
 Loads fixtures/food_search_evals.json. Each case supplies a candidate pool
-(no live USDA) and asserts top-id / confidence / web-escalation.
+(no live USDA) and asserts top-id / confidence / web-escalation. Diet cases
+apply `hit_blocked_by_diet` after ranking — lookups do not filter.
 """
 
 from __future__ import annotations
@@ -11,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from agent.harness.search.food_search import (
+from agent.harness.diets import hit_blocked_by_diet
+from agent.tools.search.food_search import (
     confidence_for,
     query_breadth,
     rank_candidates,
-    search_foods,
 )
 from schemas import FoodHit, MacroTotals, request_from_dict
 
@@ -98,7 +99,7 @@ def _req_from_case(case: dict):
 
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda c: c["id"])
-def test_food_search_eval_case(case: dict, monkeypatch: pytest.MonkeyPatch):
+def test_food_search_eval_case(case: dict):
     req = _req_from_case(case)
     query = case["query"]
     pool = [_hit(r) for r in case.get("pool") or []]
@@ -106,18 +107,27 @@ def test_food_search_eval_case(case: dict, monkeypatch: pytest.MonkeyPatch):
     if "expect_breadth" in case:
         assert query_breadth(query) == case["expect_breadth"]
 
-    # Patch retrieval so evals stay offline and deterministic.
-    monkeypatch.setattr(
-        "agent.harness.search.food_search.search_seed",
-        lambda q, limit=12: [h for h in pool if h.source == "seed"][:limit],
-    )
-    monkeypatch.setattr(
-        "agent.harness.search.food_search.search_usda_pool",
-        lambda q, limit=40: [h for h in pool if h.source != "seed"][:limit],
-    )
-
-    out = search_foods(req, query, limit=8)
     ranked = rank_candidates(pool, query, req) if pool else []
+    diets = list(case.get("diets") or [])
+    if diets:
+        ranked = [
+            row
+            for row in ranked
+            if not hit_blocked_by_diet(row.hit.displayName, row.hit.family, diets)
+        ]
+    confidence, suggest_web, reason = confidence_for(ranked, query)
+    packed = [
+        {"foodId": row.hit.foodId, "displayName": row.hit.displayName}
+        for row in ranked
+    ]
+    results = [] if confidence == "low" else packed
+    out = {
+        "confidence": confidence,
+        "suggestWebSearch": suggest_web,
+        "reason": reason,
+        "results": results,
+        "candidatesForClarify": packed[:5],
+    }
 
     if "expect_confidence" in case:
         assert out["confidence"] in case["expect_confidence"], (
@@ -133,7 +143,7 @@ def test_food_search_eval_case(case: dict, monkeypatch: pytest.MonkeyPatch):
         )
 
     if "expect_top_id" in case and pool:
-        # Prefer post-filter search_foods ordering when results are non-empty.
+        # Prefer ranked order after the diet post-filter when results are non-empty.
         surface = out.get("results") or out.get("candidatesForClarify") or []
         if surface and not case.get("expect_results_empty"):
             assert surface[0]["foodId"] == case["expect_top_id"], (

@@ -1,6 +1,6 @@
 """Strict library matching — no staple overfit."""
 
-from agent.harness.search.library_match import library_name_match, match_library
+from agent.tools.search.library_match import library_name_match, match_library
 from schemas import LibraryItemRef
 
 

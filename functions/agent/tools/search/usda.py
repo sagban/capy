@@ -1,4 +1,4 @@
-"""USDA FoodData Central client — fetch pool; ranking lives in food_search."""
+"""USDA FoodData Central client. Returns the fetch pool in FDC order."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import httpx
 
-from agent.harness.food_corpus_store import (
+from agent.tools.search.food_corpus_store import (
     corpus_store_enabled,
     get_search_slice,
     put_search_slice,
@@ -201,5 +201,5 @@ def fetch_fdc_measures(food_id: str, api_key: Optional[str] = None) -> list[Hous
 
 
 def search_usda(query: str, limit: int = 5, api_key: Optional[str] = None) -> list[FoodHit]:
-    """Back-compat thin wrapper — prefer food_search.search_foods for product ranking."""
+    """First `limit` rows from `search_usda_pool`. The pool order is unchanged."""
     return search_usda_pool(query, limit=max(limit, 20), api_key=api_key)[:limit]

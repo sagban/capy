@@ -75,6 +75,33 @@ actor AgentClient {
         return try Self.decodeDictionary(result.data)
     }
 
+    /// Short-lived bearer for an MCP client. Same account as the signed-in user.
+    func exchangeAccessToken() async throws -> MCPAccessToken {
+        guard let user = Auth.auth().currentUser else {
+            throw AgentClientError.unauthenticated
+        }
+        let idToken = try await user.getIDToken()
+        let dict = try await callCallable("exchange_access_token", payload: ["firebaseIdToken": idToken])
+        guard let accessToken = dict["accessToken"] as? String, !accessToken.isEmpty else {
+            throw AgentClientError.unavailable
+        }
+        let expiresIn = Self.intValue(dict["expiresIn"]) ?? 3600
+        return MCPAccessToken(accessToken: accessToken, expiresIn: expiresIn)
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        switch value {
+        case let number as Int:
+            return number
+        case let number as Double:
+            return Int(number)
+        case let number as NSNumber:
+            return number.intValue
+        default:
+            return nil
+        }
+    }
+
     /// Exact GTIN → Open Food Facts via `lookup_barcode`.
     func lookupBarcode(gtin: String) async throws -> BarcodeLookupResponseDTO {
         let digits = gtin.filter(\.isNumber)
@@ -177,6 +204,26 @@ actor AgentClient {
             #endif
             throw AgentClientError.unavailable
         }
+    }
+}
+
+struct MCPAccessToken: Equatable {
+    let accessToken: String
+    let expiresIn: Int
+
+    var configJSON: String {
+        """
+        {
+          "mcpServers": {
+            "cappy": {
+              "url": "\(EnvironmentConfig.hostedMCPURL.absoluteString)",
+              "headers": {
+                "Authorization": "Bearer \(accessToken)"
+              }
+            }
+          }
+        }
+        """
     }
 }
 

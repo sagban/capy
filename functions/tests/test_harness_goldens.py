@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import os
 
-from agent.harness.search.catalog import get_food
-from agent.harness.search.food_search import search_foods
+from agent.tools.search.catalog import get_food, search_seed
 from agent.graph import run_interpret
 from agent.harness.messaging import GRACEFUL_FAILURE, sanitize_assistant_message
 from schemas import request_from_dict
@@ -57,27 +56,22 @@ def test_greeting_is_not_log_meal():
 
 
 def test_search_food_rice_ranks_staple():
-    req = request_from_dict(_base_payload())
-    result = search_foods(req, "rice", limit=8)
-    assert result["cache"] == "hit"
-    names = [r["displayName"].lower() for r in result["results"]]
+    hits = search_seed("rice", limit=8)
+    names = [hit.displayName.lower() for hit in hits]
     assert names
     assert names[0].startswith("rice")
     assert "babyfood" not in names[0]
-    assert any("cooked" in n for n in names[:3])
+    assert any("cooked" in name for name in names[:3])
 
 
 def test_search_hi_does_not_match_chicken():
-    req = request_from_dict(_base_payload())
-    result = search_foods(req, "hi", limit=8)
-    assert result["results"] == [] or result["cache"] == "miss"
+    hits = search_seed("hi", limit=8)
+    assert not any("chicken" in hit.displayName.lower() for hit in hits)
 
 
 def test_search_food_seed_hit():
-    req = request_from_dict(_base_payload())
-    result = search_foods(req, "paneer")
-    assert result["cache"] in {"hit", "usda"}
-    assert any(r["foodId"] == "seed_paneer" for r in result["results"])
+    hits = search_seed("paneer")
+    assert any(hit.foodId == "seed_paneer" for hit in hits)
 
 
 def test_sanitize_preserves_model_prose():
@@ -102,9 +96,8 @@ def test_fail_closed_message_has_no_stack():
 
 
 def test_scale_portion_from_catalog():
-    req = request_from_dict(_base_payload())
-    search = search_foods(req, "rice", limit=1)
-    food = get_food(search["results"][0]["foodId"])
+    hits = search_seed("rice", limit=1)
+    food = get_food(hits[0].foodId)
     assert food is not None
     calories = round(food.per100g.calories * 2.0, 2)
     assert calories > 0

@@ -17,7 +17,8 @@
 | [runbooks/secrets-and-quotas.md](runbooks/secrets-and-quotas.md) | Secret Manager / Gemini / USDA |
 | [architecture/food-search-ranking.md](architecture/food-search-ranking.md) | Multi-source food search ranking (moat) + evals |
 | [infra/project.md](infra/project.md) | GCP/Firebase binding status |
-| [deploy/README.md](../deploy/README.md) | Cloud Run `cappy-api` (healthz, token exchange, `/mcp` SSE) |
+| [deploy/README.md](../deploy/README.md) | Cloud Run `cappy-api` (healthz, token exchange, `/mcp/` Streamable HTTP) |
 | [infra/firebase-auth-checklist.md](infra/firebase-auth-checklist.md) | Apple + Google auth |
 | [seed/inventory.md](seed/inventory.md) | Seed foods/templates |
 | [prd-mapping.md](prd-mapping.md) | FR → issues |
+| [amazon-appdev-2026-submission.md](amazon-appdev-2026-submission.md) | Alexa+ submission checklist (deadline Oct 23, 2026, 12:00 PM PT) |

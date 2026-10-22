@@ -1,8 +1,21 @@
-"""Closed outcome check. One blocking pending action at most, and a valid shape."""
+"""Turn a tool trace into the client outcome, then check that shape."""
 
 from __future__ import annotations
 
-from schemas import InterpretMealResponse, PendingActionType
+from typing import Any
+
+from agent.harness.suggestions import suggestion_options
+from schemas import (
+    InterpretMealRequest,
+    InterpretMealResponse,
+    MealIntent,
+    PendingAction,
+    PendingActionPayload,
+    PendingActionType,
+    ResolvedItem,
+    SuggestionOption,
+    WorkingMemory,
+)
 
 BLOCKING = {
     PendingActionType.clarify_food,
@@ -51,6 +64,109 @@ def _check_pending(response: InterpretMealResponse) -> None:
         if not payload.entryId or not (payload.dayKey or "").strip():
             raise OutcomeError("confirm_delete needs entryId and dayKey")
         return
+
+
+def _blank_memory(req: InterpretMealRequest) -> WorkingMemory:
+    current = req.conversation.workingMemory
+    if current is None:
+        return WorkingMemory()
+    return current.model_copy(deep=True)
+
+
+def _pending(kind: PendingActionType, payload: PendingActionPayload) -> PendingAction:
+    return PendingAction(type=kind, prompt="", payload=payload)
+
+
+def _wrote(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for step in reversed(trace):
+        result = step.get("result") if isinstance(step.get("result"), dict) else {}
+        if step.get("name") in {"write_food_entry", "delete_food_entry"} and result.get("wrote"):
+            return result
+    return None
+
+
+def _staged(trace: list[dict[str, Any]]) -> tuple[str, dict[str, Any]] | None:
+    for step in reversed(trace):
+        if step.get("name") not in {"write_food_entry", "delete_food_entry"}:
+            continue
+        result = step.get("result") if isinstance(step.get("result"), dict) else {}
+        if result.get("staged"):
+            return str(step.get("name")), result
+    return None
+
+
+def outcome_from_trace(req: InterpretMealRequest, trace: list[dict[str, Any]]) -> dict[str, Any]:
+    memory = _blank_memory(req)
+    wrote = _wrote(trace)
+    staged = _staged(trace)
+    pending_action: PendingAction | None = None
+    intent = MealIntent.unknown
+    facts: dict[str, Any] = {}
+    suggestions: list[SuggestionOption] = []
+
+    if wrote is not None:
+        intent = MealIntent.log_meal
+        memory.pendingAction = None
+        memory.pendingIntent = None
+        memory.draftLog = []
+        memory.resolveQueue = None
+        facts = {"logged": True, "items": [{"displayName": "meal", "name": "meal"}]}
+    elif staged is not None:
+        name, result = staged
+        items = [ResolvedItem.model_validate(row) for row in (result.get("items") or [])]
+        if name == "delete_food_entry":
+            intent = MealIntent.correct_meal
+            pending_action = _pending(
+                PendingActionType.confirm_delete,
+                PendingActionPayload(
+                    entryId=result.get("entryId"),
+                    dayKey=result.get("dayKey"),
+                    reason=result.get("label") or "meal",
+                ),
+            )
+            facts = {"items": [{"displayName": result.get("label") or "meal"}]}
+        elif result.get("pendingType") == PendingActionType.confirm_correction.value:
+            intent = MealIntent.correct_meal
+            pending_action = _pending(
+                PendingActionType.confirm_correction,
+                PendingActionPayload(
+                    resolvedItems=items,
+                    entryId=result.get("entryId"),
+                    dayKey=result.get("dayKey"),
+                    itemIndex=0,
+                    correctionOp="replace",
+                ),
+            )
+            facts = {"items": [item.model_dump(mode="json") for item in items]}
+        else:
+            intent = MealIntent.log_meal
+            pending_action = _pending(
+                PendingActionType.confirm_log,
+                PendingActionPayload(resolvedItems=items),
+            )
+            facts = {"items": [item.model_dump(mode="json") for item in items]}
+        memory.pendingAction = pending_action
+        memory.pendingIntent = pending_action.type.value
+        memory.draftLog = items
+    else:
+        suggestions = suggestion_options(trace, req.diaryContext.remaining)
+        if suggestions:
+            intent = MealIntent.suggest_meal
+            memory.lastSuggestionOptions = suggestions
+            facts = {"options": [option.model_dump(mode="json") for option in suggestions]}
+
+    return {
+        "intent": intent.value,
+        "candidates": [],
+        "clarifyingQuestion": None,
+        "assistantMessage": "",
+        "warnings": [],
+        "memoryProposals": [],
+        "pendingAction": pending_action.model_dump(mode="json") if pending_action else None,
+        "suggestionOptions": [option.model_dump(mode="json") for option in suggestions],
+        "workingMemory": memory.model_dump(mode="json"),
+        "phraseFacts": facts,
+    }
 
 
 def normalize_outcome(payload: dict) -> dict:

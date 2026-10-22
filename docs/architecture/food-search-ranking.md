@@ -1,46 +1,26 @@
-# Food search ranking (moat)
+# Food search
 
-Goal: **correct food for logging with minimal friction** — not “a hit.” Wrong confirm is worse than abstain → clarify (or main-model web context, not harness web I/O).
+Each source is its own Gemini tool. The agent does not merge them into one ranked list.
 
-## What the field does
+| Tool | Lookup | Order |
+|------|--------|--------|
+| `search_catalog` | `functions/agent/tools/search/catalog.py` (`search_seed`) | Seed match order |
+| `search_usda` | `functions/agent/tools/search/usda.py` (`search_usda_pool`) | FoodData Central order |
+| `search_library` | `functions/agent/tools/search/library_match.py` | Strict title match |
+| `lookup_barcode` | `functions/agent/tools/search/open_food_facts.py` | Exact GTIN, or `{ "found": false }` |
 
-| Domain | Pattern | Takeaway for Capy |
-|--------|---------|-------------------|
-| Classic IR | BM25 / BM25F (fielded title, brand, body) | Score **query↔name** and **query↔brand** separately; don’t treat FDC description blob as one bag |
-| E‑commerce LTR ([Flipkart](https://arxiv.org/abs/1907.01549), [Walmart](https://arxiv.org/abs/2412.04637)) | Retrieve with BM25 → re-rank with query / item / query–item / context features; **broad vs narrow** queries | Broad (“rice”) → staples + trust; narrow (“ON whey”) → identity match or abstain |
-| Nutrition apps (Cronometer, MFP) | Filter by Common / Brands / Restaurants; recents & favorites; barcode for labels | Personalization (today, likes, corrections) is first-class; brand nicknames need resolution, not forced generics |
-| USDA FDC | Opaque relevance; Branded vs Foundation/SR; brandOwner is a separate field | Always **merge pools**, then rank ourselves; surface `brandOwner` in the label for fielded match |
-| Safety | Barcode/search false positives (FDC docs) | **No confident result** beats wrong product |
+The shared tools in `functions/agent/tools/` call those lookups and return that source's hits. They do not log. Inside `interpret_meal`, a diet or allergy conflict is marked on the hit and the hit stays in the list. A cited menu is passed on `write_food_entry` as `per100g` plus `citationUrl`. The caller does not search that line.
 
-We are **not** training LTR yet (no click/log labels). We use an explicit, testable feature score + confidence gate that mirrors those feature families.
+The barcode scanner uses the same Open Food Facts lookup through the `lookup_barcode` callable.
 
-## Feature families (v1)
+## Offline ranker
 
-1. **Query features** — breadth (`broad` \| `narrow`), token counts, identity tokens (short/ALLCAPS)
-2. **Item features** — source (`seed` / `usda` / `usda_branded`), noise flags, nutrient completeness
-3. **Query–item** — fielded lexical match (description vs brand), coverage, unexplained tokens, BM25-lite
-4. **Context** — likes, today log, recent corrections, workingMemory / pending candidates
+`functions/agent/tools/search/food_search.py` (`rank_candidates`, `confidence_for`, `query_breadth`) scores a pool the caller already fetched. Evals: `functions/tests/test_food_search_evals.py` and `fixtures/food_search_evals.json`. The agent does not call it.
 
-## Confidence policy
+| Confidence | Results | When |
+|------------|---------|------|
+| `high` | Top hit | Strong match, no unexplained tokens, clear gap |
+| `medium` | Top hit | Usable, possibly ambiguous |
+| `low` / `none` | Empty | Weak match, unresolved tokens, or an empty pool |
 
-| Confidence | `results` | `suggestWebSearch` | When |
-|------------|-----------|--------------------|------|
-| `high` | Top ranked | false | Strong match, no unexplained identity tokens, clear gap |
-| `medium` | Top ranked | sometimes | Usable but ambiguous — agent may clarify or web |
-| `low` / `none` | **Empty** (hints only) | true | Unresolved tokens, weak match, empty pool |
-
-## Code
-
-- Ranker: `functions/food_search.py`
-- USDA pool (unranked fetch): `functions/usda.py` → `search_usda_pool`
-- Evals: `functions/tests/test_food_search_evals.py` + `fixtures/food_search_evals.json`
-
-## Barcode path (exact GTIN)
-
-Manual Log barcode scanner → callable `lookup_barcode` → **Open Food Facts** exact GTIN (UPC-A / EAN-13 variants). Hit returns catalog-style `per100g` + optional serving; miss / incomplete macros → `{ found: false }` (no invent). Not mixed into text search ranking.
-
-## Next (not v1)
-
-- Offline LTR once we have confirm/reject labels from chat
-- Embedding similarity for vocabulary gap (restaurant slang ↔ catalog)
-- USDA FDC `gtinUpc` as a secondary barcode pool
+Features: query breadth (`broad` or `narrow`), item source and completeness, fielded name/brand match, and context (likes, today's log, corrections, working memory).

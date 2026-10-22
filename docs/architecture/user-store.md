@@ -1,6 +1,6 @@
 # Server user store (Firestore)
 
-Phase 1 source of truth for harness context. Clients keep sending fat `interpretMeal` payloads until `useServerContext: true`.
+Firestore store for profile, diary, library, and the Capy thread. `useServerContext: true` loads it for a turn. `false` uses the snapshots on the request.
 
 ## Paths
 
@@ -103,7 +103,7 @@ Every user/assistant turn is appended here (`seq` monotonic per thread). Nothing
 - **Initial load** (no `cursor`): newest `limit` messages, chronological order.
 - **Scroll up** (`cursor` = previous `pageInfo.nextCursor`): next older page.
 - `pageInfo.nextCursor` is only set when `hasMore` is true; pass it as the next `cursor`.
-- `conversation.recentTurns` is always empty on the wire; the harness still uses the thread doc’s `recentTurns` server-side.
+- `conversation.recentTurns` is empty on the wire. The harness reads `recentTurns` from the thread document.
 
 `interpret_meal` (with `useServerContext`) adds the same `messages` + `pageInfo` shape after a successful turn (latest window).
 
@@ -131,7 +131,7 @@ Every user/assistant turn is appended here (`seq` monotonic per thread). Nothing
 }
 ```
 
-Harness context expands each item to a `DiaryEntry` row (same shape as the legacy iOS diary DTO).
+Harness context expands each item to a `DiaryEntry` row.
 
 ## Library item document (`users/{uid}/library/{itemId}`)
 
@@ -177,9 +177,9 @@ Harness context expands each item to a `DiaryEntry` row (same shape as the legac
 
 Builds `InterpretMealRequest` for `prepare` → `build_pack` → `semantic_block`. Utterance and `dayKey`/`timezone` come from the client; conversation loads from `users/{uid}/threads/{threadId}` (`agent/thread_store.py`). With `useServerContext`, `libraryContext` loads from `users/{uid}/library` (merged with any client snapshot).
 
-## iOS client (phase 2)
+## iOS client
 
 - `UserSyncService` queues `log_meal` / `delete_meal` / `patch_profile` / `upsert_library_item` / `delete_library_item` (UserDefaults), flushes on network + app active.
 - Library pull: `list_library` on launch / foreground; merge into SwiftData; push local-only rows.
-- `InterpretMealRequestDTO.serverContext` sends utterance + day identity + `useServerContext` (+ compact local `libraryContext` while migrating); chat history syncs via `get_thread` / `interpret_meal` response `conversation` / `patch_thread`.
+- `InterpretMealRequestDTO.serverContext` sends the utterance, day, `useServerContext`, and a compact `libraryContext`. Chat history syncs through `get_thread`, the `interpret_meal` `conversation`, and `patch_thread`.
 - Profile push: Settings, goals, meal types, memory sheet, and app launch.

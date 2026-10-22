@@ -1,4 +1,4 @@
-from agent.harness.recipes_store import (
+from agent.tools.search.recipes_store import (
     build_recipe_document,
     normalize_ingredients,
     recipe_from_composite_seed_raw,

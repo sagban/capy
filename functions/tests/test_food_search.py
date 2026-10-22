@@ -1,8 +1,10 @@
-"""Multi-source food search ranking (use-case: correct log, not any hit)."""
+"""Catalog lookup and offline ranking of a caller-supplied pool."""
 
 from __future__ import annotations
 
-from agent.harness.search.food_search import rank_candidates, search_foods
+from agent.tools.lookups import search_catalog
+from agent.tools.search.catalog import search_seed
+from agent.tools.search.food_search import rank_candidates
 from schemas import FoodHit, MacroTotals, request_from_dict
 
 
@@ -87,17 +89,23 @@ def test_personalization_boosts_today_log():
     assert ranked[0].hit.foodId == "b"
 
 
-def test_search_food_rice_still_seed_staple():
-    result = search_foods(_req(), "rice", limit=8)
-    assert result["results"]
-    assert result["results"][0]["displayName"].lower().startswith("rice")
-    assert result.get("suggestWebSearch") is False or result.get("confidence") in {
-        "high",
-        "medium",
-    }
+def test_search_catalog_rice_is_seed_staple():
+    result = search_catalog("rice", limit=8)
+    hits = result["hits"]
+    assert hits
+    assert hits[0]["displayName"].lower().startswith("rice")
+    assert result["source"] == "catalog"
+    seed = search_seed("rice", limit=8)
+    assert [hit["foodId"] for hit in hits] == [hit.foodId for hit in seed]
 
 
-def test_search_foods_empty_query():
-    out = search_foods(_req(), "", limit=5)
-    assert out["suggestWebSearch"] is True
-    assert out["results"] == []
+def test_search_catalog_empty_query_is_rejected():
+    from pydantic import ValidationError
+
+    from agent.tools.registry import SearchCatalogArgs
+
+    try:
+        SearchCatalogArgs(query="")
+    except ValidationError:
+        return
+    raise AssertionError("empty catalog query should be rejected")

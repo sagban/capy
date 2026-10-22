@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent.harness.seed_corpus_import import (
+from agent.tools.search.seed_corpus_import import (
     data_type_for_food,
     file_sha256,
     iter_recipes_from_seed,

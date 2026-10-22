@@ -1,4 +1,4 @@
-"""Thin LangGraph: prepare → llm → environment → format → respond."""
+"""Thin LangGraph: prepare → llm → tools, looping until the model replies or the cap."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from agent.harness.checkpointer import get_checkpointer, reset_checkpointer
 from agent.harness.memory.episodic import thread_id as conversation_thread_id
 from schemas import request_from_dict
 from agent.turn import (
+    MAX_TOOL_ROUNDS,
     call_model,
     finalize,
     format_reply,
@@ -27,6 +28,9 @@ class GraphState(TypedDict, total=False):
     model_text: str
     outcome: dict[str, Any]
     response: dict[str, Any]
+    tool_trace: list[dict[str, Any]]
+    rounds: int
+    uid: str
 
 
 def prepare_node(state: GraphState) -> GraphState:
@@ -99,9 +103,14 @@ def _after_llm(state: GraphState) -> str:
     outcome = state.get("outcome") or {}
     if "agent_unavailable" in (outcome.get("warnings") or []):
         return "respond"
-    if state.get("calls"):
+    if state.get("calls") and int(state.get("rounds") or 0) < MAX_TOOL_ROUNDS:
         return "environment"
     return "format"
+
+
+def _after_environment(state: GraphState) -> str:
+    del state
+    return "llm"
 
 
 def build_graph():
@@ -118,7 +127,11 @@ def build_graph():
         _after_llm,
         {"environment": "environment", "format": "format", "respond": "respond"},
     )
-    graph.add_edge("environment", "format")
+    graph.add_conditional_edges(
+        "environment",
+        _after_environment,
+        {"llm": "llm", "format": "format"},
+    )
     graph.add_edge("format", "respond")
     graph.add_edge("respond", END)
     return graph.compile(checkpointer=get_checkpointer())
@@ -144,7 +157,7 @@ def run_interpret(payload: dict[str, Any], *, uid: str = "test", thread_id: str 
     req = request_from_dict(payload)
     tid = thread_id or conversation_thread_id(req)
     config = {"configurable": {"thread_id": f"{uid}:{tid}"}}
-    final = get_graph().invoke({"req": req.model_dump(mode="json")}, config)
+    final = get_graph().invoke({"req": req.model_dump(mode="json"), "uid": uid}, config)
     response = final.get("response")
     if isinstance(response, dict) and response.get("intent"):
         return response

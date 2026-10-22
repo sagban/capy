@@ -38,7 +38,7 @@ def main() -> int:
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")
 
-    from agent.harness.recipes_store import (
+    from agent.tools.search.recipes_store import (
         list_composite_corpus_docs,
         recipe_from_composite_seed_raw,
         upsert_recipes,

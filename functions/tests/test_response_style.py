@@ -2,8 +2,8 @@
 
 from agent.context_loader import _interpret_context_from_raw
 from agent.harness.memory.semantic import semantic_block
-from agent.llm.prompt import MEAL_AGENT_SYSTEM, meal_agent_system
-from agent.llm.response_style import (
+from agent.harness.prompts import MEAL_AGENT_SYSTEM, meal_agent_system
+from agent.harness.prompts.response_style import (
     DEFAULT_RESPONSE_STYLE,
     instruction_block_for_response_style,
     temperature_for_response_style,

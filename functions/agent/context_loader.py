@@ -13,7 +13,7 @@ from agent.user_store import (
     long_term_from_profile,
     preference_context_from_profile,
 )
-from agent.llm.response_style import normalize_response_style
+from agent.harness.prompts.response_style import normalize_response_style
 from schemas import (
     InterpretContext,
     InterpretMealRequest,

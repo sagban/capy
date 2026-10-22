@@ -92,7 +92,7 @@ Dogfood runs one container (`functions/Dockerfile`, service **`cappy-api`**, [de
 
 - `GET /healthz`
 - `POST /exchange_access_token` (mint Cappy access JWT from `firebaseIdToken`; body `{"data":…}` or bare JSON)
-- **MCP over SSE** at `/mcp`
+- **MCP Streamable HTTP** (spec 2025-11-25) at `/mcp/`
 
 Meal APIs are **not** exposed as raw HTTP on Cloud Run. **iOS** uses Firebase **callables** (table above). **Alexa / MCP clients** use hosted MCP or callables — not duplicate HTTP routes on Run.
 
@@ -118,21 +118,22 @@ gcloud run services describe cappy-api --region us-central1 --project capy-dogfo
 |-------|--------|------|
 | `/healthz` | GET | none |
 | `/exchange_access_token` | POST | none (body: `firebaseIdToken`) |
-| `/mcp/sse` | GET | Bearer |
-| `/mcp/messages/` | POST | Bearer |
+| `/mcp/` | POST, GET | Bearer |
 
 ### MCP server (hosted)
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET {base}/mcp/sse` | SSE stream (MCP session) |
-| `POST {base}/mcp/messages/` | MCP message POSTs |
+| `POST {base}/mcp/` | Streamable HTTP JSON-RPC (initialize, tools/list, tools/call) |
+| `GET {base}/mcp/` | Optional server-to-client stream on the same endpoint |
 
-**Hosted MCP URL (SSE entrypoint):**
+**Hosted MCP URL:**
 
 ```text
-https://cappy-api-XXXXXXXXXX.us-central1.run.app/mcp/sse
+https://cappy-api-XXXXXXXXXX.us-central1.run.app/mcp/
 ```
+
+Send `Accept: application/json, text/event-stream` and `Content-Type: application/json`. A successful `initialize` returns `protocolVersion` `2025-11-25`. The trailing slash is required.
 
 Every MCP HTTP request must include:
 
@@ -140,11 +141,9 @@ Every MCP HTTP request must include:
 Authorization: Bearer <Firebase ID token | Cappy access JWT>
 ```
 
-Tools (same five as [mcp-tools.md](mcp-tools.md)): `interpret_meal`, `log_meal`, `patch_profile`, `get_thread`, `patch_thread`. Implementation: `functions/agent/mcp_host.py`, mounted in `functions/service_app.py`.
+Tools on the hosted server: `search_catalog`, `search_usda`, `search_library`, `lookup_barcode`, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, `upsert_library_item`, `delete_library_item`, `list_library`. `interpret_meal`, `get_thread`, and `patch_thread` stay Firebase callables for the iPhone. Implementation: `functions/agent/mcp_host.py`, mounted in `functions/service_app.py`.
 
-**Local stdio MCP** (Cursor): [`mcp_server/`](../../mcp_server/) — optional.
-
-**Alexa:** use account-linked **Bearer** token with hosted MCP (`{base}/mcp/sse`) from skill backend, or call Firebase **callables** directly (see §4). Do not point Alexa account linking at MCP OAuth scopes; linking only supplies the access token your backend sends on MCP HTTP.
+**Alexa:** use account-linked **Bearer** token with hosted MCP (`{base}/mcp/`) from the skill backend, or call Firebase **callables** directly (see §4). Do not point Alexa account linking at MCP OAuth scopes; linking only supplies the access token your backend sends on MCP HTTP.
 
 ---
 
@@ -285,9 +284,7 @@ Other intents can call `log_meal`, `get_thread` (`limit`, `cursor`), etc. — se
 
 ### Option B — Hosted MCP on Cloud Run (Alexa / agents)
 
-Point an MCP HTTP client at `{cappy-api-url}/mcp/sse` with `Authorization: Bearer` = linked access token. Invoke tools `interpret_meal`, `log_meal`, etc. ([mcp-tools.md](mcp-tools.md)). Cloud Run does not expose `/interpret_meal` as plain HTTP — only MCP + exchange.
-
-Local stdio MCP (`python -m capy_mcp` from `mcp_server/`) remains for Cursor dev.
+Point an MCP Streamable HTTP client at `{cappy-api-url}/mcp/` with `Authorization: Bearer` = linked access token. The agent calls `search_catalog`, `portion_to_grams`, `write_food_entry`, and the other tools in [mcp-tools.md](mcp-tools.md). A client that only has an utterance calls the `interpret_meal` Firebase callable, not MCP. Cloud Run does not expose `/interpret_meal` as plain HTTP — only MCP + exchange.
 
 ### Manual token bootstrap (before OAuth pages exist)
 
@@ -337,4 +334,3 @@ Local stdio MCP (`python -m capy_mcp` from `mcp_server/`) remains for Cursor dev
 - [external-auth.md](external-auth.md) — Bearer tokens and `exchange_access_token`
 - [mcp-tools.md](mcp-tools.md) — Tool names and payloads (mirror in skill code)
 - [user-store.md](user-store.md) — Firestore data linked users see via server context
-- [mcp_server/README.md](../../mcp_server/README.md) — Local MCP (not Alexa production path)

@@ -38,7 +38,7 @@ def _invoke(handler, uid: str, payload: dict[str, Any]) -> Any:
 mcp = FastMCP(
     "capy-meal-agent",
     instructions=(
-        "Cappy tools for an external agent: look up foods, write a food, recipe, or meal to the diary, and sync profile and library. "
+        "Capy tools for an external agent: look up foods, write a food, recipe, or meal to the diary, and sync profile and library. "
         "search_catalog, search_usda, search_library, and lookup_barcode return hits and do not log. "
         "Requires Authorization: Bearer on the MCP HTTP session."
     ),

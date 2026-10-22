@@ -147,7 +147,7 @@ List saved library items. Use this before `upsert_library_item` or `delete_libra
 
 | Name | Where it lives |
 |------|----------------|
-| `interpret_meal` | Firebase callable for the iPhone. It runs Cappy's model. Contract: [api-contracts.md](api-contracts.md). |
+| `interpret_meal` | Firebase callable for the iPhone. It runs Capy's model. Contract: [api-contracts.md](api-contracts.md). |
 | `get_thread`, `patch_thread` | Firebase callables for the iPhone. Contract: [user-store.md](user-store.md#get_thread-contract). |
 | `exchange_access_token` | Callable and `POST /exchange_access_token`. Contract: [api-contracts.md](api-contracts.md). |
 | In-app confirm gate | The iPhone `interpret_meal` callable stages the first `write_food_entry` or `delete_food_entry`. The MCP tools of those names write immediately. List: [harness.md](harness.md). |

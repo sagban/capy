@@ -39,7 +39,7 @@ cp functions/.env.example functions/.env
 ```
 
 Gemini in prod/emulator: **Vertex ADC** (`~/.config/gcloud/application_default_credentials.json`).  
-USDA in prod: Secret Manager — see [secrets-and-quotas.md](secrets-and-quotas.md).
+USDA in prod: Secret Manager `USDA_FDC_API_KEY`.
 
 ## Emulators
 
@@ -80,8 +80,7 @@ The **capy Local** scheme sets `CAPY_ENVIRONMENT=local`; `AppEnvironment.local` 
 
 ```bash
 cd functions
-source .venv/bin/activate
-pytest tests/test_harness_goldens.py -q
+./venv/bin/python -m pytest tests/test_harness_goldens.py -q
 ```
 
 Goldens cover: clarify follow-up via workingMemory, long-thread window, today-log tool, vegetarian propose filter, long-term memory add/forget, no trusted macros in responses.
@@ -101,7 +100,7 @@ npx -y firebase-tools@latest deploy --only functions --project capy-dogfood
 
 Callable: `interpret_meal` in `us-central1` (codebase `capy-harness`).
 
-Production Gemini = **Vertex AI + ADC** (GCP credits). USDA = Secret Manager `USDA_FDC_API_KEY`. See [secrets-and-quotas.md](secrets-and-quotas.md).
+Production Gemini is Vertex AI with application default credentials. USDA is Secret Manager `USDA_FDC_API_KEY`. There is no Gemini API key in the app or the repo.
 
 iOS **capy Prod** calls deployed `interpret_meal` via Firebase Functions SDK. **capy Local** uses `AppEnvironment.local.baseURL` (Functions emulator).
 
@@ -130,9 +129,35 @@ Prod dogfood: scheme → **capy Prod** (no emulator).
 3. Ensure bundle id matches Firebase iOS app (`sagar.capy`)
 4. `FirebaseApp.configure()` in `App.init()` before Auth state objects
 
-## Auth providers checklist
+## Project
 
-See [../infra/firebase-auth-checklist.md](../infra/firebase-auth-checklist.md).
+| Item | Value |
+|------|-------|
+| Project ID | `capy-dogfood` |
+| Firestore database | `capy` |
+| Bundle ID | `sagar.capy` |
+| iOS App ID | `1:322403791923:ios:1aec38036bfb4c02e1df46` |
+| Functions region | `us-central1` |
+
+`GoogleService-Info.plist` is gitignored. Regenerate with `npx -y firebase-tools@latest apps:sdkconfig IOS 1:322403791923:ios:1aec38036bfb4c02e1df46 -o capy/GoogleService-Info.plist`.
+
+Google sign-in and email/password are on. Sign in with Apple is not. `API_ACCESS_TOKEN_SECRET` signs the one-hour MCP bearer. `USDA_FDC_API_KEY` is the only food-data secret.
+
+Set the USDA secret with `npx -y firebase-tools@latest functions:secrets:set USDA_FDC_API_KEY --project capy-dogfood`.
+
+Rebuild the on-device catalog from USDA downloads with `python3 scripts/build_food_catalog.py`. It writes `capy/Resources/SeedFoods.json` and `functions/seed/SeedFoods.json`.
+
+## Cloud Run
+
+`cappy-api` is `functions/service_app.py`: `GET /healthz`, `POST /exchange_access_token`, and MCP at `POST /mcp/`.
+
+```bash
+docker build -t gcr.io/capy-dogfood/cappy-api:latest functions
+docker push gcr.io/capy-dogfood/cappy-api:latest
+gcloud run services replace deploy/cloudrun-service.yaml --region us-central1 --project capy-dogfood
+```
+
+Hosted MCP: `https://cappy-api-3xo5ujxm4a-uc.a.run.app/mcp/`. Sign-in page: `/kitchen`.
 
 ## CI (decision)
 

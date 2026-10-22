@@ -7,14 +7,14 @@ Base: Firebase Callable (or HTTPS function) on the active project.
 ## Auth
 
 ```http
-Authorization: Bearer <Firebase ID token | Cappy access token>
+Authorization: Bearer <Firebase ID token | Capy access token>
 ```
 
 - **iOS:** Firebase SDK callables (ID token attached automatically).
 - **MCP token page:** `GET /kitchen` on `cappy-api`. `POST /kitchen/session` with `{ email, password }` returns `{ accessToken, tokenType, expiresIn, mcpUrl }` for an MCP client. The iPhone app mints the same token from Settings.
 - **HTTP / MCP / Alexa:** Callable HTTP with `Authorization: Bearer`, or mint a 1h access token via `exchange_access_token`.
 
-Full flow: [external-auth.md](external-auth.md). MCP tools: [mcp-tools.md](mcp-tools.md).
+MCP tools: [mcp-tools.md](mcp-tools.md). The bearer is a Firebase ID token or the one-hour token from `exchange_access_token`.
 
 Reject unauthenticated requests. App Check is not enforced.
 

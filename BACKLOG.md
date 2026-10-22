@@ -1,4 +1,4 @@
-# Cappy backlog map
+# Capy backlog map
 
 Tracked on GitHub: [sagban/capy](https://github.com/sagban/capy)
 
@@ -11,7 +11,7 @@ Phase 0 = infra + documentation only. Feature coding starts Phase 1 ∥ Phase 2 
 - Firebase dogfood project: **`capy-dogfood`** with iOS app `sagar.capy`.
 - [#13](https://github.com/sagban/capy/issues/13) closed: Google enabled; Apple Sign-In deferred.
 - Phase 2 UI shell shipped (Auth → Onboarding → TabView). Harness wiring remains Phase 1/3.
-- Details: [docs/infra/project.md](docs/infra/project.md)
+- Details: [docs/runbooks/local-dev.md](docs/runbooks/local-dev.md)
 
 ## Milestones
 

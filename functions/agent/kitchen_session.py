@@ -1,4 +1,4 @@
-"""Sign-in page that returns a Cappy access token for MCP clients.
+"""Sign-in page that returns a Capy access token for MCP clients.
 
 The user signs in with the same email and password as the iPhone app. The
 response is the bearer token and a ready MCP config. Nothing is stored.
@@ -95,7 +95,7 @@ _PAGE = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cappy MCP token</title>
+  <title>Capy MCP token</title>
   <style>
     :root {
       color-scheme: light;
@@ -134,7 +134,7 @@ _PAGE = """<!DOCTYPE html>
 <body>
   <main>
     <h1>MCP token</h1>
-    <p class="lead">Sign in with your Cappy account. Copy the token into your MCP client. It lasts 1 hour.</p>
+    <p class="lead">Sign in with your Capy account. Copy the token into your MCP client. It lasts 1 hour.</p>
     <form id="sign-in">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" autocomplete="username" required />

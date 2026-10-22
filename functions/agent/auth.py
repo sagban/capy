@@ -1,4 +1,4 @@
-"""Bearer auth: Firebase ID tokens (iOS / web) and Cappy short-lived access tokens (MCP, Alexa)."""
+"""Bearer auth: Firebase ID tokens (iOS / web) and Capy short-lived access tokens (MCP, Alexa)."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def verify_access_token(token: str) -> str:
 
 
 def resolve_bearer_to_uid(bearer: str) -> str:
-    """Accept Firebase ID token or Cappy access JWT."""
+    """Accept Firebase ID token or Capy access JWT."""
     token = (bearer or "").strip()
     if not token:
         raise AuthError("Missing bearer token.")

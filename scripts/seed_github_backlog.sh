@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seed Cappy GitHub backlog (epics + child issues). Idempotent enough for first run.
+# Seed Capy GitHub backlog (epics + child issues). Idempotent enough for first run.
 set -euo pipefail
 export PATH="/opt/homebrew/bin:$PATH"
 REPO="${REPO:-sagban/capy}"

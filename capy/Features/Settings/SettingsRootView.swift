@@ -45,7 +45,7 @@ struct GeneralSettingsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Regional & units")
                             .font(.title2.weight(.bold))
-                        Text("Dates and numbers follow your iPhone region. Choose how Cappy shows energy and weight.")
+                        Text("Dates and numbers follow your iPhone region. Choose how Capy shows energy and weight.")
                             .font(.subheadline)
                             .foregroundStyle(Color.capy.textSecondary)
                     }

@@ -1,4 +1,4 @@
-# Cloud Run service for Cappy HTTP API + MCP (single container).
+# Cloud Run service for Capy HTTP API + MCP (single container).
 # Build: docker build -t gcr.io/capy-dogfood/cappy-api:latest functions
 # Deploy: gcloud run services replace deploy/cloudrun-service.yaml --region us-central1
 apiVersion: serving.knative.dev/v1

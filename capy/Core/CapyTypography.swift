@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Cappy type system: SF Rounded for warm, friendly doer UI (no custom font bundle).
+/// Capy type system: SF Rounded for warm, friendly doer UI (no custom font bundle).
 /// Macro numbers use tabular digits so rings/lists don’t jitter.
 enum CapyTypography {
     /// App-wide design: rounded SF Pro.

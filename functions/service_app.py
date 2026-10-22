@@ -30,7 +30,7 @@ async def _lifespan(_app: FastAPI):
         yield
 
 
-app = FastAPI(title="Cappy API", version="1.0", lifespan=_lifespan)
+app = FastAPI(title="Capy API", version="1.0", lifespan=_lifespan)
 
 
 def _bearer_from_headers(headers: dict[str, str]) -> str | None:

@@ -148,7 +148,7 @@ def patch_thread(req: https_fn.CallableRequest) -> dict:
     secrets=[API_ACCESS_TOKEN_SECRET],
 )
 def exchange_access_token(req: https_fn.CallableRequest) -> dict:
-    """Exchange a Firebase ID token for a short-lived Cappy access token (MCP / HTTP clients)."""
+    """Exchange a Firebase ID token for a short-lived Capy access token (MCP / HTTP clients)."""
     raw = req.data if isinstance(req.data, dict) else {}
     try:
         return exchange_firebase_for_access(raw)

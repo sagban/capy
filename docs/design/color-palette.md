@@ -6,8 +6,6 @@ Pre-declared tokens. **No ad-hoc hex in SwiftUI views.** Use `Color.capy.*` (ass
 
 Warm neutrals + a bright moss accent. Macro rings (calories / P / C / F) use saturated, easy-to-scan hues — not muted pastels. Avoid purple AI clichés, neon glow stacks, and cream+terracotta “AI landing page” tropes.
 
-Typography, app icon, and Capy persona: [typography-persona.md](typography-persona.md).
-
 ## Tokens
 
 | Token | Role | Light (hex) | Dark (hex) |
@@ -42,3 +40,7 @@ Accent in Xcode: map `AccentColor` → `capy.accent`.
 3. Reason chips → `capy.accentSoft` fill + `capy.textPrimary`
 4. Macro badges / goal rings → `capy.budget*` (keep saturated — don’t mute in views)
 5. Never hardcode `#RRGGBB` in feature views
+
+## Type and voice
+
+UI text is SF Rounded (`capyTypography()`). Macro numbers use `.monospacedDigit()`. Copy uses logged, fits, and left. No streaks and no coach language.

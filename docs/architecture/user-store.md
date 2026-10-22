@@ -177,6 +177,10 @@ Harness context expands each item to a `DiaryEntry` row.
 
 Builds `InterpretMealRequest` for `prepare` → `build_pack` → `semantic_block`. Utterance and `dayKey`/`timezone` come from the client; conversation loads from `users/{uid}/threads/{threadId}` (`agent/thread_store.py`). With `useServerContext`, `libraryContext` loads from `users/{uid}/library` (merged with any client snapshot).
 
+## Recipes collection
+
+Named dishes live in `recipes/{recipeId}` on database `capy`, not in `foodCorpus`. `foodCorpus` holds atomic foods and templates. `scripts/import_seed_food_corpus.py` writes both. A library recipe on the phone is still `users/{uid}/library/{id}`.
+
 ## iOS client
 
 - `UserSyncService` queues `log_meal` / `delete_meal` / `patch_profile` / `upsert_library_item` / `delete_library_item` (UserDefaults), flushes on network + app active.

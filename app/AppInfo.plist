@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CAPYFirebaseProjectID</key>
+	<string>$(CAPY_FIREBASE_PROJECT_ID)</string>
+	<key>CAPYHostedMCPURL</key>
+	<string>$(CAPY_MCP_URL)</string>
 	<key>CAPYEmulatorHost</key>
 	<string>$(CAPYEmulatorHost)</string>
 	<key>CAPYEnvironment</key>
@@ -13,12 +17,12 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd</string>
+				<string>$(CAPY_GOOGLE_REVERSED_CLIENT_ID)</string>
 			</array>
 		</dict>
 	</array>
 	<key>GIDClientID</key>
-	<string>322403791923-q3h9gnam5o5kugsodak9pstn2bvsnhtd.apps.googleusercontent.com</string>
+	<string>$(CAPY_GOOGLE_CLIENT_ID)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

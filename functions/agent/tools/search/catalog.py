@@ -1,4 +1,4 @@
-"""Embedded seed catalog for Functions (mirrors capy/Resources/SeedFoods.json)."""
+"""Embedded seed catalog for Functions (mirrors app/capy/Resources/SeedFoods.json)."""
 
 from __future__ import annotations
 

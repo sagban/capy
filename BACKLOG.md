@@ -8,7 +8,7 @@ Phase 0 = infra + documentation only. Feature coding starts Phase 1 ∥ Phase 2 
 ## Phase 0 status (2026-10-11)
 
 - Docs/design/rules/seed: **done** (issues #14–#28 closed).
-- Firebase dogfood project: **`capy-dogfood`** with iOS app `sagar.capy`.
+- Firebase project and iOS app ids live in `.firebaserc` and `app/Config/Secrets.xcconfig`, not in source.
 - [#13](https://github.com/sagban/capy/issues/13) closed: Google enabled; Apple Sign-In deferred.
 - Phase 2 UI shell shipped (Auth → Onboarding → TabView). Harness wiring remains Phase 1/3.
 - Details: [docs/runbooks/local-dev.md](docs/runbooks/local-dev.md)
@@ -102,7 +102,7 @@ Phase 0 = infra + documentation only. Feature coding starts Phase 1 ∥ Phase 2 
 | [#50](https://github.com/sagban/capy/issues/50) | [UI] Confirm-before-persist logging + correction deltas |
 | [#51](https://github.com/sagban/capy/issues/51) | [Core] Suggestion pipeline templates → variety → verify → abstain |
 | [#52](https://github.com/sagban/capy/issues/52) | [Both] Dial enforcement in-app (Full Assist / Guided / Quiet) |
-| [#53](https://github.com/sagban/capy/issues/53) | [Dogfood] First open → log → suggestion in under 2 minutes |
+| [#53](https://github.com/sagban/capy/issues/53) | First open → log → suggestion in under 2 minutes |
 
 ## Phase 4 — Polish and Evals
 

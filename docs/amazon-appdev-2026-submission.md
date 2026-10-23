@@ -16,13 +16,13 @@ Submitting early does not freeze the page. Edit the writeup, video, and repo unt
 
 Alexa+, Bee, and Ring each require the repo to call that track’s technology in code: an import, an entry point, or a loaded agent, flow, or MCP config. A README mention does not count.
 
-Capy is on the MCP server path, not the simulated-experience path. The server is Streamable HTTP, spec 2025-11-25 or newer, in `functions/agent/mcp_host.py` and `functions/service_app.py`. Cloud Run `cappy-api` is live: `POST https://cappy-api-3xo5ujxm4a-uc.a.run.app/mcp/`. A request without a bearer returns `401`. The `/kitchen` page only mints the token. It is not an Alexa+ simulation, so it does not satisfy the track by itself.
+Capy is on the MCP server path, not the simulated-experience path. The server is Streamable HTTP, spec 2025-11-25 or newer, in `functions/cloudrun/mcp/host.py`, mounted by `functions/cloudrun/app.py`. Cloud Run `capy-mcp` is the host: `POST https://capy-mcp-322403791923.us-central1.run.app/mcp/`. A request without a bearer returns `401`. The `/authenticate` page signs in and mints the token. It is not an Alexa+ simulation, so it does not satisfy the track by itself.
 
 The simulated-experience alternative needs no particular SDK, but the simulation’s source has to be in the repo and the demo has to show that simulation working. We are not using that alternative.
 
 - [x] Streamable HTTP MCP exposes the meal tools (lookups, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, library, profile)
 - [ ] The demo shows that MCP server in action: say the meal, Capy confirms what was logged and what’s left, then a second turn (“add a coffee” or “I only ate half”) stays on the same day, and the iPhone Food Log shows that entry
-- [x] Judges can run it from the README: install, the exact command, a bearer from `/kitchen`, and one egg logged with `search_catalog`, `portion_to_grams`, and `write_food_entry`
+- [x] Judges can run it from the README: install, the exact command, a bearer from `/authenticate`, and one egg logged with `search_catalog`, `portion_to_grams`, and `write_food_entry`
 - [ ] No API keys in the repo. Secrets stay in env files that are gitignored
 
 Account-linking pages for a shipped Alexa skill are not in this repo. This submission does not include them.
@@ -84,7 +84,7 @@ The sentence is three tool calls, and the model is not allowed to skip them with
 2. Convert the portion. `portion_to_grams` uses the measures on that hit. An unknown unit comes back unmapped. Capy does not invent 100 grams for a whole plate.
 3. Write one line. `write_food_entry` takes the name, the grams, and `per100g` copied from the hit: calories, protein, carbs, and fat for 100 grams, not scaled to the portion. The diary does the multiplication. A second food is a second call. An edit is `get_diary`, then the same write with that entry’s id, or `delete_food_entry` for the one line that should go.
 
-Alexa+ reaches those tools through a self-hosted MCP server, Streamable HTTP, spec 2025-11-25. The server is `functions/agent/mcp_host.py`, mounted at `POST /mcp/` by `functions/service_app.py`. `initialize` returns `protocolVersion` `2025-11-25`. The bearer is the person. No bearer, no diary: the route returns `401`. `GET /kitchen` signs in with the same email and password as the phone and hands back a one-hour token plus an MCP config.
+Alexa+ reaches those tools through a self-hosted MCP server, Streamable HTTP, spec 2025-11-25. The server is `functions/cloudrun/mcp/host.py`, mounted at `POST /mcp/` by `functions/cloudrun/app.py`. `initialize` returns `protocolVersion` `2025-11-25`. The bearer is the person. No bearer, no diary: the route returns `401`. `GET /authenticate` signs in with the same email and password as the phone and hands back a one-hour token plus an MCP config.
 
 The phone’s own agent is the only caller of `interpret_meal`. It passes the same tool list into the model and reads each result as a function response, not as text pasted into the chat. The first in-app write stages a confirm. The write goes through only when the food id, the grams, and the per-100g numbers still match what was shown. MCP writes immediately, because the person already said the meal out loud.
 
@@ -94,7 +94,7 @@ The spec Alexa+ asks for is not the tutorial you find first. Streamable HTTP sit
 
 The second trap was treating a name and a weight as a meal. Early writes stored missing macros as zero and still said the food was logged. A zero-calorie egg is the same lie as a guessed egg. The write now refuses to land without `per100g`.
 
-Account linking is a second login on top of the one the person already has. We can show the diary from a bearer minted at `/kitchen`. We cannot yet show a skill that stays linked past an hour. That limit is in the demo on purpose. A kitchen that dies at minute 61 is not shipped.
+Account linking is a second login on top of the one the person already has. We can show the diary from a bearer minted at `/authenticate`. We cannot yet show a skill that stays linked past an hour. That limit is in the demo on purpose. A kitchen that dies at minute 61 is not shipped.
 
 ### Accomplishments
 
@@ -151,7 +151,7 @@ Create the project against hackathon `amazonappdev2026`, then fill these. Requir
 
 ## Feedback answers
 
-Drafts for the five required questions. Grounded in the repo: FastMCP tools, Streamable HTTP at `POST /mcp/`, and a one-hour bearer from `/kitchen`. Account-linking pages are not shipped.
+Drafts for the five required questions. Grounded in the repo: FastMCP tools, Streamable HTTP at `POST /mcp/`, and a one-hour bearer from `/authenticate`. Account-linking pages are not shipped.
 
 Not entered: Fire TV, Ring, Bee, or AWS runtime services.
 

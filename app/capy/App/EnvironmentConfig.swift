@@ -6,8 +6,8 @@ enum AppEnvironment: String, Sendable {
     case local
     case prod
 
-    /// Firebase / GCP project for dogfood (same for Local emulator + Prod callables).
-    var firebaseProjectID: String { "capy-dogfood" }
+    /// From `app/Config/Secrets.xcconfig` → Info.plist. Same project for the emulator and prod callables.
+    var firebaseProjectID: String { Self.plistString("CAPYFirebaseProjectID") }
 
     var functionsRegion: String { "us-central1" }
     var functionsName: String { "interpret_meal" }
@@ -23,13 +23,14 @@ enum AppEnvironment: String, Sendable {
     }
 
     /// Streamable HTTP MCP. Trailing slash is required.
-    /// Local is `service_app` on port 8080. Prod is the Cloud Run `cappy-api` host.
+    /// Local is `cloudrun.app` on port 8080. Prod is `CAPYHostedMCPURL` from Secrets.xcconfig.
     var hostedMCPURL: URL {
         switch self {
         case .local:
-            URL(string: "http://\(Self.emulatorHost):8080/mcp/")!
+            return URL(string: "http://\(Self.emulatorHost):8080/mcp/")!
         case .prod:
-            URL(string: "https://cappy-api-322403791923.us-central1.run.app/mcp/")!
+            let raw = Self.plistString("CAPYHostedMCPURL")
+            return URL(string: raw) ?? URL(string: "https://missing-mcp-url.invalid/mcp/")!
         }
     }
 
@@ -58,7 +59,13 @@ enum AppEnvironment: String, Sendable {
 
     /// Host for the Functions emulator.
     /// Simulator always uses loopback. Physical device uses `CAPYEmulatorHost` from
-    /// `Config/LocalEmulatorHost.xcconfig` (written by `./run.sh` = Mac LAN IP).
+    /// `app/Config/LocalEmulatorHost.xcconfig` (written by `./run.sh` = Mac LAN IP).
+    static func plistString(_ key: String) -> String {
+        (
+            Bundle.main.object(forInfoDictionaryKey: key) as? String
+        )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
     static var emulatorHost: String {
         #if targetEnvironment(simulator)
         return "127.0.0.1"

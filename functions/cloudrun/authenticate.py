@@ -58,13 +58,13 @@ def _mcp_url(request: Request) -> str:
     return f"{proto}://{host}/mcp/"
 
 
-def register_kitchen(app: FastAPI) -> None:
-    @app.get("/kitchen")
-    async def kitchen_page() -> HTMLResponse:
+def register_authenticate(app: FastAPI) -> None:
+    @app.get("/authenticate")
+    async def authenticate_page() -> HTMLResponse:
         return HTMLResponse(_PAGE)
 
-    @app.post("/kitchen/session")
-    async def kitchen_session(request: Request) -> JSONResponse:
+    @app.post("/authenticate")
+    async def authenticate(request: Request) -> JSONResponse:
         try:
             body = await request.json()
         except Exception as exc:  # noqa: BLE001
@@ -170,7 +170,7 @@ _PAGE = """<!DOCTYPE html>
     function configFor(url, token) {
       return JSON.stringify({
         mcpServers: {
-          cappy: {
+          capy: {
             url,
             headers: { Authorization: "Bearer " + token }
           }
@@ -186,7 +186,7 @@ _PAGE = """<!DOCTYPE html>
     signIn.addEventListener("submit", async (event) => {
       event.preventDefault();
       showErr("");
-      const res = await fetch("/kitchen/session", {
+      const res = await fetch("/authenticate", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: signIn.email.value, password: signIn.password.value }),

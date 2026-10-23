@@ -22,21 +22,14 @@ npx -y firebase-tools@latest use <PROJECT_ID>
 
 ```bash
 npx -y firebase-tools@latest apps:sdkconfig IOS <APP_ID> > /tmp/GoogleService-Info.plist
-# Copy into capy/ (gitignored). Link in Xcode target.
+# Copy into app/capy/ (gitignored). Link in Xcode target.
 ```
 
 ## Secrets (local)
 
-```bash
-# Optional project ids for tooling
-cp .env.example .env
+`./configure.sh` writes `functions/.env` from `capy.env` for the Functions emulator. Do not set `GOOGLE_CLOUD_PROJECT` in that file. Firebase reserves it.
 
-# Emulator-only Vertex model / location (do NOT set GOOGLE_CLOUD_PROJECT — reserved)
-cp functions/.env.example functions/.env
-
-# Emulator override for USDA SecretParam (optional; seed catalog works without a real key)
-# printf 'USDA_FDC_API_KEY=your-data-gov-key\n' > functions/.secret.local
-```
+USDA in the emulator is optional. The seed catalog works without a real key. For a data.gov key, put `USDA_FDC_API_KEY` in `functions/.secret.local`.
 
 Gemini in prod/emulator: **Vertex ADC** (`~/.config/gcloud/application_default_credentials.json`).  
 USDA in prod: Secret Manager `USDA_FDC_API_KEY`.
@@ -47,7 +40,7 @@ USDA in prod: Secret Manager `USDA_FDC_API_KEY`.
 ./run.sh
 ```
 
-(`run.sh` ensures `functions/venv`, seeds `.env` / `.secret.local` if missing, starts **Phoenix** on `:6006` when `CAPY_PHOENIX=1`, then Auth + Functions.)
+(`run.sh` ensures `functions/venv`, runs `./configure.sh`, starts **Phoenix** on `:6006` when `CAPY_PHOENIX=1` in `capy.env`, then Auth + Functions.)
 
 | Service | Host |
 |---------|------|
@@ -56,7 +49,7 @@ USDA in prod: Secret Manager `USDA_FDC_API_KEY`.
 | Functions | `127.0.0.1:5001` |
 | Emulator UI | http://127.0.0.1:4000 |
 
-Disable Phoenix: set `CAPY_PHOENIX=0` in `functions/.env`.
+Disable Phoenix: set `CAPY_PHOENIX=0` in `capy.env`, then run `./configure.sh`.
 
 Manual equivalent:
 
@@ -85,20 +78,13 @@ cd functions
 
 Goldens cover: clarify follow-up via workingMemory, long-thread window, today-log tool, vegetarian propose filter, long-term memory add/forget, no trusted macros in responses.
 
-## Deploy Functions (dogfood)
+## Deploy
 
-Firebase Python Functions expect a local `functions/venv` (CLI discovery), even though `venv` is not uploaded.
+`./deploy.sh` from the repo root. It deploys the Firebase callables (`interpret_meal` in `us-central1`, codebase `capy-harness`) and Cloud Run `capy-mcp` (`GET /healthz`, `GET` and `POST /authenticate`, `POST /exchange_access_token`, MCP at `POST /mcp/`).
 
-```bash
-cd functions
-python3.12 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd ..
-npx -y firebase-tools@latest deploy --only functions --project capy-dogfood
-```
+Firebase Python Functions expect a local `functions/venv` (CLI discovery), even though `venv` is not uploaded. The script creates it.
 
-Callable: `interpret_meal` in `us-central1` (codebase `capy-harness`).
+`./deploy.sh` reads `capy.env`, prints the MCP URL, and writes that URL back into `CAPY_MCP_URL`.
 
 Production Gemini is Vertex AI with application default credentials. USDA is Secret Manager `USDA_FDC_API_KEY`. There is no Gemini API key in the app or the repo.
 
@@ -108,56 +94,55 @@ iOS **capy Prod** calls deployed `interpret_meal` via Firebase Functions SDK. **
 
 | Scheme | Build configs | Harness |
 |--------|---------------|---------|
-| **capy Local** | `DebugLocal` / `ReleaseLocal` → [`Config/Local.xcconfig`](../../Config/Local.xcconfig) | Functions emulator `127.0.0.1:5001`. MCP config points at `service_app` on port 8080. |
-| **capy Prod** | `DebugProd` / `ReleaseProd` → [`Config/Prod.xcconfig`](../../Config/Prod.xcconfig) | Deployed `interpret_meal` on `capy-dogfood`. MCP config points at Cloud Run `cappy-api`. |
+| **capy Local** | `DebugLocal` / `ReleaseLocal` → [`app/Config/Local.xcconfig`](../../app/Config/Local.xcconfig) | Functions emulator `127.0.0.1:5001`. MCP config points at `cloudrun.app` on port 8080. |
+| **capy Prod** | `DebugProd` / `ReleaseProd` → [`app/Config/Prod.xcconfig`](../../app/Config/Prod.xcconfig) | Deployed `interpret_meal` and the MCP host from `app/Config/Secrets.xcconfig`. |
 
 `AppEnvironment` owns per-env behavior; `EnvironmentConfig` resolves the active scheme (`CAPY_LOCAL` / `CAPYEnvironment`). Pick the scheme in Xcode before Run.
 
 Local run checklist:
 
-1. `./run.sh` (also writes `Config/LocalEmulatorHost.xcconfig` with your Mac LAN IP)
+1. `./run.sh` (also writes `app/Config/LocalEmulatorHost.xcconfig` with your Mac LAN IP)
 2. Xcode scheme → **capy Local** → rebuild
 3. Sign in (production Auth is fine; Functions hit the emulator)
 4. **Simulator** uses `127.0.0.1`. **Physical device** uses the LAN IP from step 1 — rebuild after `./run.sh` so the IP is baked in.
 
-Prod dogfood: scheme → **capy Prod** (no emulator).
+Prod: scheme → **capy Prod** (no emulator).
 
 ## iOS
 
-1. Open `capy.xcodeproj`
+1. Open `app/capy.xcodeproj`
 2. Choose **capy Local** or **capy Prod**
-3. Ensure bundle id matches Firebase iOS app (`sagar.capy`)
+3. Ensure the bundle id matches the Firebase iOS app you created
 4. `FirebaseApp.configure()` in `App.init()` before Auth state objects
 
 ## Project
 
 | Item | Value |
 |------|-------|
-| Project ID | `capy-dogfood` |
-| Firestore database | `capy` |
-| Bundle ID | `sagar.capy` |
-| iOS App ID | `1:322403791923:ios:1aec38036bfb4c02e1df46` |
-| Functions region | `us-central1` |
+Edit `capy.env` only. `./configure.sh` writes `.firebaserc` and `app/Config/Secrets.xcconfig` from it, and copies the Google client id and API key out of `app/capy/GoogleService-Info.plist` when those fields are still empty.
 
-`GoogleService-Info.plist` is gitignored. Regenerate with `npx -y firebase-tools@latest apps:sdkconfig IOS 1:322403791923:ios:1aec38036bfb4c02e1df46 -o capy/GoogleService-Info.plist`.
+| `capy.env` key | What it sets |
+|----------------|--------------|
+| `CAPY_GCP_PROJECT` | Firebase and GCP project |
+| `CAPY_REGION` | Cloud Run and Functions region |
+| `CAPY_MCP_SERVICE` | Cloud Run service name |
+| `CAPY_MCP_URL` | Prod iPhone MCP host. `./deploy.sh` fills this in |
+| `FIRESTORE_DATABASE_ID` | Named Firestore database |
+| `FIREBASE_WEB_API_KEY` | `/authenticate`. Taken from the plist `API_KEY` when empty |
+| `CAPY_GOOGLE_CLIENT_ID` | Google Sign-In. Taken from the plist when empty |
+
+Download the iOS plist once:
+
+```bash
+npx -y firebase-tools@latest apps:sdkconfig IOS <your-ios-app-id> -o app/capy/GoogleService-Info.plist
+./configure.sh
+```
 
 Google sign-in and email/password are on. Sign in with Apple is not. `API_ACCESS_TOKEN_SECRET` signs the one-hour MCP bearer. `USDA_FDC_API_KEY` is the only food-data secret.
 
-Set the USDA secret with `npx -y firebase-tools@latest functions:secrets:set USDA_FDC_API_KEY --project capy-dogfood`.
+Set the USDA secret with `npx -y firebase-tools@latest functions:secrets:set USDA_FDC_API_KEY --project <your-gcp-project>`.
 
-Rebuild the on-device catalog from USDA downloads with `python3 scripts/build_food_catalog.py`. It writes `capy/Resources/SeedFoods.json` and `functions/seed/SeedFoods.json`.
-
-## Cloud Run
-
-`cappy-api` is `functions/service_app.py`: `GET /healthz`, `POST /exchange_access_token`, and MCP at `POST /mcp/`.
-
-```bash
-docker build -t gcr.io/capy-dogfood/cappy-api:latest functions
-docker push gcr.io/capy-dogfood/cappy-api:latest
-gcloud run services replace deploy/cloudrun-service.yaml --region us-central1 --project capy-dogfood
-```
-
-Hosted MCP: `https://cappy-api-3xo5ujxm4a-uc.a.run.app/mcp/`. Sign-in page: `/kitchen`.
+Rebuild the on-device catalog from USDA downloads with `python3 scripts/build_food_catalog.py`. It writes `app/capy/Resources/SeedFoods.json` and `functions/seed/SeedFoods.json`.
 
 ## CI (decision)
 

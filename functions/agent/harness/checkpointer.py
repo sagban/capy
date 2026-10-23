@@ -29,8 +29,10 @@ def get_checkpointer() -> Any:
             os.environ.get("GOOGLE_CLOUD_PROJECT")
             or os.environ.get("GCLOUD_PROJECT")
             or os.environ.get("GCP_PROJECT")
-            or "capy-dogfood"
-        )
+            or ""
+        ).strip()
+        if not project:
+            raise RuntimeError("Set GOOGLE_CLOUD_PROJECT to your GCP project.")
         database_id = os.environ.get("FIRESTORE_DATABASE_ID", "capy").strip() or "capy"
         collection = "agentGraphCheckpoints"
         # from_conn_info is a @contextmanager — do not pass it to compile().

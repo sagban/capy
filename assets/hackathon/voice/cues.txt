@@ -1,0 +1,19 @@
+Capy voiceover. Spoken from docs/hackathon-video-script.md.
+Voice: Andrew, US English.
+Alexa+ is spoken "Alexa Plus". MCP, API, DynamoDB, and USDA are spelled out.
+Full track 2:19.008  capy-voiceover.m4a
+
+0:00.300  0:09.204  01-capy.mp3
+0:10.204  0:23.860  02-the-awareness-gap.mp3
+0:24.860  0:37.940  03-what-the-tracker-makes-you-do.mp3
+0:38.940  0:51.324  04-what-it-does.mp3
+0:52.324  1:11.788  05-a-meal-is-three-tool-calls.mp3
+1:12.788  1:29.180  06-one-diary-two-doors.mp3
+1:30.180  1:49.020  07-capy-on-aws.mp3
+1:50.020  1:57.916  08-architecture.mp3
+1:58.916  2:01.148  09-demo-two-large-eggs-and-a-cup-of-rice.mp3
+2:02.398  2:05.278  10-demo-that-is-what-got-logged-and-this.mp3
+2:06.528  2:08.400  11-demo-i-only-ate-half.mp3
+2:09.650  2:11.978  12-demo-same-day-that-one-line-changed.mp3
+2:13.228  2:14.764  13-demo-the-phone-is-the-same-log.mp3
+2:15.764  2:18.308  14-close.mp3

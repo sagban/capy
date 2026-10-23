@@ -1,0 +1,216 @@
+1
+00:00:00,340 --> 00:00:02,357
+Capy is a food log you talk to.
+
+2
+00:00:02,357 --> 00:00:04,122
+You say what you want to eat.
+
+3
+00:00:04,122 --> 00:00:07,651
+Capy finds a meal that still fits today, and that you will actually eat.
+
+4
+00:00:07,651 --> 00:00:09,164
+The log fills in after that.
+
+5
+00:00:10,244 --> 00:00:11,575
+People want to stay healthy.
+
+6
+00:00:11,575 --> 00:00:13,705
+They need a clear picture of the day.
+
+7
+00:00:13,705 --> 00:00:15,302
+Logging food is part of that.
+
+8
+00:00:15,302 --> 00:00:17,431
+Most apps make logging harder than the meal.
+
+9
+00:00:17,431 --> 00:00:18,230
+A search box.
+
+10
+00:00:18,230 --> 00:00:18,762
+A barcode.
+
+11
+00:00:18,762 --> 00:00:21,158
+A meal plan that is gone in a week.
+
+12
+00:00:21,158 --> 00:00:23,820
+You miss a day, and it feels like you failed.
+
+13
+00:00:24,900 --> 00:00:27,879
+What can I eat right now, with what I have left?
+
+14
+00:00:27,879 --> 00:00:29,233
+That is the real question.
+
+15
+00:00:29,233 --> 00:00:30,858
+A tracker gives you a form.
+
+16
+00:00:30,858 --> 00:00:34,921
+You stop, look up each food, guess the portion, and hope the number is right.
+
+17
+00:00:34,921 --> 00:00:37,900
+If you only ate half, there is nothing real to change.
+
+18
+00:00:38,980 --> 00:00:41,617
+You say the meal, or you ask what fits.
+
+19
+00:00:41,617 --> 00:00:45,718
+Capy looks the food up, turns your portion into grams, and writes one line.
+
+20
+00:00:45,718 --> 00:00:48,062
+The calories and macros come from that food.
+
+21
+00:00:48,062 --> 00:00:51,284
+Capy tells you what it logged, and what you have left.
+
+22
+00:00:52,364 --> 00:00:54,210
+Logging a meal takes three steps.
+
+23
+00:00:54,210 --> 00:00:56,979
+Capy cannot skip one and make the plate up.
+
+24
+00:00:56,979 --> 00:00:58,210
+It finds the food.
+
+25
+00:00:58,210 --> 00:01:01,594
+It turns your portion into grams, using that food’s own measures.
+
+26
+00:01:01,594 --> 00:01:03,133
+Then it writes one line.
+
+27
+00:01:03,133 --> 00:01:06,210
+The numbers for 100 grams are copied from the food.
+
+28
+00:01:06,210 --> 00:01:07,748
+The log does the math.
+
+29
+00:01:07,748 --> 00:01:11,748
+If you only ate half, Capy opens today and changes that one line.
+
+30
+00:01:12,828 --> 00:01:16,279
+When your hands are busy, you say the meal to Alexa+.
+
+31
+00:01:16,279 --> 00:01:18,474
+It uses the same tools, through MCP.
+
+32
+00:01:18,474 --> 00:01:21,298
+If you are not signed in, nothing is logged.
+
+33
+00:01:21,298 --> 00:01:26,003
+On the phone, Capy waits until you confirm the food, the grams, and the numbers.
+
+34
+00:01:26,003 --> 00:01:27,258
+The model can talk.
+
+35
+00:01:27,258 --> 00:01:29,140
+It cannot make up the meal.
+
+36
+00:01:30,220 --> 00:01:32,608
+Alexa+ and the phone share one log.
+
+37
+00:01:32,608 --> 00:01:34,654
+API Gateway is the front door.
+
+38
+00:01:34,654 --> 00:01:39,088
+App Runner runs the server and writes the meal while you are talking.
+
+39
+00:01:39,088 --> 00:01:42,499
+Lambda runs the phone and waits for you to confirm.
+
+40
+00:01:42,499 --> 00:01:43,864
+Bedrock is the model.
+
+41
+00:01:43,864 --> 00:01:45,228
+DynamoDB stores the log.
+
+42
+00:01:45,228 --> 00:01:46,592
+Cognito signs you in.
+
+43
+00:01:46,592 --> 00:01:48,980
+The USDA key stays in Secrets Manager.
+
+44
+00:01:50,060 --> 00:01:52,086
+The meal comes in through the gateway.
+
+45
+00:01:52,086 --> 00:01:56,139
+The tools find the food, turn the portion into grams, and write the line.
+
+46
+00:01:56,139 --> 00:01:57,876
+The phone shows the same log.
+
+47
+00:01:58,956 --> 00:02:01,108
+Two large eggs and a cup of rice.
+
+48
+00:02:02,438 --> 00:02:05,238
+That is what got logged, and this is what you have left.
+
+49
+00:02:06,568 --> 00:02:08,360
+I only ate half.
+
+50
+00:02:09,690 --> 00:02:10,439
+Same day.
+
+51
+00:02:10,439 --> 00:02:11,938
+That one line changed.
+
+52
+00:02:13,268 --> 00:02:14,724
+The phone is the same log.
+
+53
+00:02:15,804 --> 00:02:16,508
+You eat.
+
+54
+00:02:16,508 --> 00:02:18,268
+The log is already written.
+

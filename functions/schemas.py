@@ -375,6 +375,11 @@ def _unwrap_firebase_number(value: dict[str, Any]) -> Any | None:
     return raw
 
 
+def normalize_firebase_payload(value: Any) -> Any:
+    """Turn Firebase callable Int64/Double wrappers into plain numbers, recursively."""
+    return _normalize_payload(value)
+
+
 def _normalize_payload(value: Any) -> Any:
     """Drop nulls and unwrap Firebase typed numbers for Pydantic."""
     if isinstance(value, dict):

@@ -84,7 +84,7 @@ Goldens cover: clarify follow-up via workingMemory, long-thread window, today-lo
 
 Firebase Python Functions expect a local `functions/venv` (CLI discovery), even though `venv` is not uploaded. The script creates it.
 
-`./deploy.sh` reads `capy.env`, prints the MCP URL, and writes that URL back into `CAPY_MCP_URL`.
+`./deploy.sh` reads `capy.env`, builds the image with Cloud Build, prints the MCP URL, and writes that URL back into `CAPY_MCP_URL`. Docker is not required on your machine.
 
 Production Gemini is Vertex AI with application default credentials. USDA is Secret Manager `USDA_FDC_API_KEY`. There is no Gemini API key in the app or the repo.
 

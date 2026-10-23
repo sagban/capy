@@ -25,19 +25,17 @@ fi
 echo "Deploying Firebase functions…"
 npx -y firebase-tools@latest deploy --only functions --project "$PROJECT"
 
-echo "Building ${IMAGE}…"
-gcloud auth configure-docker gcr.io --quiet
-docker build -t "$IMAGE" functions
-docker push "$IMAGE"
+echo "Building ${IMAGE} with Cloud Build…"
+gcloud builds submit "$ROOT/functions" --project "$PROJECT" --tag "$IMAGE"
 
 echo "Replacing Cloud Run service ${SERVICE}…"
 RENDERED="$(mktemp)"
 sed \
-  -e "s|PROJECT_ID|${PROJECT}|g" \
-  -e "s|SERVICE_NAME|${SERVICE}|g" \
-  -e "s|DATABASE_ID|${FIRESTORE_DATABASE_ID}|g" \
-  -e "s|VERTEX_LOCATION|${GOOGLE_CLOUD_LOCATION}|g" \
-  -e "s|VERTEX_MODEL|${VERTEX_GEMINI_MODEL}|g" \
+  -e "s|__CAPY_GCP_PROJECT__|${PROJECT}|g" \
+  -e "s|__CAPY_SERVICE__|${SERVICE}|g" \
+  -e "s|__FIRESTORE_DATABASE_ID__|${FIRESTORE_DATABASE_ID}|g" \
+  -e "s|__VERTEX_LOCATION__|${GOOGLE_CLOUD_LOCATION}|g" \
+  -e "s|__VERTEX_MODEL__|${VERTEX_GEMINI_MODEL}|g" \
   deploy/cloudrun-service.yaml > "$RENDERED"
 gcloud run services replace "$RENDERED" --region "$REGION" --project "$PROJECT"
 rm -f "$RENDERED"

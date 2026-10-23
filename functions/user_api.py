@@ -24,7 +24,7 @@ from agent.user_store import list_library_items as store_list_library_items
 from agent.user_store import log_meal as store_log_meal
 from agent.user_store import patch_profile as store_patch_profile
 from agent.user_store import upsert_library_item as store_upsert_library_item
-from schemas import MacroTotals
+from schemas import MacroTotals, normalize_firebase_payload
 
 logger = logging.getLogger("capy.user_api")
 
@@ -76,7 +76,10 @@ def _validate_items(items: Any) -> list[dict[str, Any]]:
 
 
 def patch_profile_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
-    patch = {k: v for k, v in raw.items() if k != "useServerContext"}
+    normalized = normalize_firebase_payload(raw)
+    if not isinstance(normalized, dict):
+        normalized = {}
+    patch = {k: v for k, v in normalized.items() if k != "useServerContext"}
     profile = store_patch_profile(uid, patch)
     logger.info("patch_profile uid=%s keys=%s", uid, sorted(patch.keys()))
     return {"profile": profile}
@@ -96,7 +99,10 @@ def log_meal_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             message="dayKey and mealSlot are required.",
         )
-    items = _validate_items(raw.get("items"))
+    normalized = normalize_firebase_payload(raw)
+    if not isinstance(normalized, dict):
+        normalized = {}
+    items = _validate_items(normalized.get("items"))
     result = store_log_meal(
         uid,
         day_key=day_key,

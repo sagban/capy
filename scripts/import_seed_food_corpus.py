@@ -5,7 +5,7 @@ Requires Application Default Credentials and Firebase Admin (same project as Fun
 
   cd /path/to/capy
   python3 scripts/import_seed_food_corpus.py --dry-run
-  python3 scripts/import_seed_food_corpus.py --project capy-dogfood
+  python3 scripts/import_seed_food_corpus.py --project your-gcp-project
   python3 scripts/import_seed_food_corpus.py --force
 
 Meta: foodCorpus/_meta/catalog/current

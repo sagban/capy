@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add DebugLocal/ReleaseLocal/DebugProd/ReleaseProd + xcconfig wiring to capy.xcodeproj."""
+"""Add DebugLocal/ReleaseLocal/DebugProd/ReleaseProd + xcconfig wiring to app/capy.xcodeproj."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PBX = ROOT / "capy.xcodeproj" / "project.pbxproj"
+PBX = ROOT / "app" / "capy.xcodeproj" / "project.pbxproj"
 
 
 def nid() -> str:

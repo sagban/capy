@@ -11,7 +11,7 @@ Authorization: Bearer <Firebase ID token | Capy access token>
 ```
 
 - **iOS:** Firebase SDK callables (ID token attached automatically).
-- **MCP token page:** `GET /kitchen` on `cappy-api`. `POST /kitchen/session` with `{ email, password }` returns `{ accessToken, tokenType, expiresIn, mcpUrl }` for an MCP client. The iPhone app mints the same token from Settings.
+- **MCP token page:** `GET /authenticate` on `capy-mcp`. `POST /authenticate` with `{ email, password }` returns `{ accessToken, tokenType, expiresIn, mcpUrl }` for an MCP client. The iPhone app mints the same token from Settings.
 - **HTTP / MCP / Alexa:** Callable HTTP with `Authorization: Bearer`, or mint a 1h access token via `exchange_access_token`.
 
 MCP tools: [mcp-tools.md](mcp-tools.md). The bearer is a Firebase ID token or the one-hour token from `exchange_access_token`.

@@ -4,8 +4,8 @@
 Reads foodCorpus docs with dataType == composite (seedRaw.components), writes
 recipes/{recipeId}. Does not delete foodCorpus rows (safe rollback).
 
-  python3 scripts/migrate_composites_to_recipes.py --project capy-dogfood
-  python3 scripts/migrate_composites_to_recipes.py --project capy-dogfood --dry-run
+  python3 scripts/migrate_composites_to_recipes.py --project your-gcp-project
+  python3 scripts/migrate_composites_to_recipes.py --project your-gcp-project --dry-run
 """
 
 from __future__ import annotations

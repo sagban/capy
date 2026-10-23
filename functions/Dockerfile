@@ -10,5 +10,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Cloud Run serves HTTP + MCP; Firebase callables remain a separate deploy target.
-CMD exec uvicorn service_app:app --host 0.0.0.0 --port ${PORT}
+# Cloud Run serves HTTP + MCP. Firebase callables stay on functions/main.py.
+CMD exec uvicorn cloudrun.app:app --host 0.0.0.0 --port ${PORT}

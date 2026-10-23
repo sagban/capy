@@ -21,8 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "scripts" / "data" / "usda"
-OVERLAY = ROOT / "capy" / "Resources" / "CatalogOverlay.json"
-OUT_APP = ROOT / "capy" / "Resources" / "SeedFoods.json"
+OVERLAY = ROOT / "app" / "capy" / "Resources" / "CatalogOverlay.json"
+OUT_APP = ROOT / "app" / "capy" / "Resources" / "SeedFoods.json"
 OUT_FN = ROOT / "functions" / "seed" / "SeedFoods.json"
 
 FOUNDATION_URL = (

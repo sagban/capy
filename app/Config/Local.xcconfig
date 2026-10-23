@@ -1,4 +1,6 @@
 // Scheme: "capy Local" → Functions emulator (see AppEnvironment.local).
+// Project id, MCP host, and Google client id live in Secrets.xcconfig (gitignored).
+#include? "Secrets.xcconfig"
 // ./run.sh writes LocalEmulatorHost.xcconfig with your Mac LAN IP (physical device).
 // Simulator ignores that and always uses 127.0.0.1 in Swift.
 CAPYEmulatorHost = 127.0.0.1

@@ -1,4 +1,7 @@
 // Scheme: "capy Prod" → deployed callables (see AppEnvironment.prod).
+// Project id, MCP host, and Google client id live in Secrets.xcconfig (gitignored).
+#include? "Secrets.xcconfig"
+
 CAPY_ENVIRONMENT = prod
 INFOPLIST_KEY_CAPYEnvironment = prod
 CAPYEmulatorHost =

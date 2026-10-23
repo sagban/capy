@@ -1,6 +1,6 @@
 # MCP tool catalog
 
-Hosted server: [`functions/agent/mcp_host.py`](../../functions/agent/mcp_host.py), mounted at `POST /mcp/` on Cloud Run. Tools run in-process. The caller is the agent: it looks food up, portions it, and writes the diary.
+Hosted server: [`functions/cloudrun/mcp/host.py`](../../functions/cloudrun/mcp/host.py), mounted at `POST /mcp/` by [`functions/cloudrun/app.py`](../../functions/cloudrun/app.py). Tools run in-process. The caller is the agent: it looks food up, portions it, and writes the diary.
 
 `interpret_meal`, `get_thread`, and `patch_thread` are Firebase callables for the iPhone. They are not tools on this server. `exchange_access_token` is the callable and `POST /exchange_access_token` on the same host.
 

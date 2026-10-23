@@ -33,7 +33,7 @@ DEFAULT_TARGET = MacroTotals(calories=2000, proteinG=140, carbsG=200, fatG=65)
 def get_db() -> Client:
     from firebase_admin import firestore
 
-    # capy-dogfood uses a named DB (`capy`), not `(default)`.
+    # Named database from FIRESTORE_DATABASE_ID. Default id is `capy`, not `(default)`.
     database_id = os.environ.get("FIRESTORE_DATABASE_ID", "capy").strip() or "capy"
     return firestore.client(database_id=database_id)
 

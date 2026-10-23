@@ -1,7 +1,7 @@
 """Cloud Function entry. Agent = LLM + harness (`agent/`).
 
 Production auth:
-- Gemini via Vertex AI + ADC (GCP billing / credits on capy-dogfood)
+- Gemini via Vertex AI + ADC on the Firebase project's GCP project
 - USDA key via Secret Manager → injected as USDA_FDC_API_KEY
 """
 

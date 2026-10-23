@@ -215,7 +215,7 @@ struct MCPAccessToken: Equatable {
         """
         {
           "mcpServers": {
-            "cappy": {
+            "capy": {
               "url": "\(EnvironmentConfig.hostedMCPURL.absoluteString)",
               "headers": {
                 "Authorization": "Bearer \(accessToken)"

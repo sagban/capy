@@ -4,19 +4,23 @@ DerivedData/
 xcuserdata/
 
 # Secrets / local env
+.firebaserc
+capy.env
 .env
 .env.*
 !.env.example
 functions/.secret.local
 GoogleService-Info.plist
 **/Secrets.xcconfig
-Config/LocalEmulatorHost.xcconfig
+app/Config/LocalEmulatorHost.xcconfig
 *.pem
 
 # Python
 __pycache__/
 .venv/
 venv/
+.pytest_cache/
+functions/.pytest_cache/
 # Backlog seed artifacts
 scripts/.backlog_issue_map.tsv
 

@@ -12,7 +12,6 @@ functions/agent/
   turn.py             # those nodes
   tools/              # shared stateless tools and the Gemini registry
   llm/                # Gemini call. The harness passes the prompt in.
-  mcp_host.py         # MCP edge. Same diary tools, direct writes
   thread_store.py     # conversation thread
   user_store.py       # profile, diary, library
   harness/
@@ -79,7 +78,7 @@ A log is search, then `portion_to_grams`, then one `write_food_entry`. One call 
 ## Not tools
 
 - **Memory.** `save_memory.py` adds a `memoryProposals` entry when the utterance starts with "remember" or "forget". `format_reply` attaches it. The client applies it. There is no confirm step for memory.
-- **MCP.** `mcp_host.py` exposes the four lookups, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, and the library tools. See [mcp-tools.md](mcp-tools.md). The external agent calls those tools. `write_food_entry` and `delete_food_entry` on MCP write immediately. Direct lookups return the source hits with no `conflict` field. `interpret_meal` is the iPhone callable and is not an MCP tool.
+- **MCP.** `functions/cloudrun/` is the Cloud Run app. `cloudrun/mcp/host.py` exposes the four lookups, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, and the library tools. See [mcp-tools.md](mcp-tools.md). The external agent calls those tools. `write_food_entry` and `delete_food_entry` on MCP write immediately. Direct lookups return the source hits with no `conflict` field. `interpret_meal` is the iPhone callable and is not an MCP tool.
 - **Callables.** `log_meal`, `delete_meal`, profile, library, and barcode callables are the iPhone edge. They call `user_api`, the same bottom the tools use. See [api-contracts.md](api-contracts.md).
 - **Ranker.** `tools/search/food_search.py` scores a pool for offline evals. The agent does not call it.
 

@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 logger = logging.getLogger("capy.vertex")
 
-DEFAULT_PROJECT = "capy-dogfood"
 # Gemini 3 publisher models are served from the Vertex `global` endpoint.
 DEFAULT_LOCATION = "global"
 # 3.x allows google_search + function_declarations on one turn; 2.5 does not.
@@ -18,12 +17,15 @@ DEFAULT_MODEL = "gemini-3.5-flash"
 
 
 def _project_id() -> str:
-    return (
+    project = (
         os.environ.get("GOOGLE_CLOUD_PROJECT")
         or os.environ.get("GCLOUD_PROJECT")
         or os.environ.get("GCP_PROJECT")
-        or DEFAULT_PROJECT
-    )
+        or ""
+    ).strip()
+    if not project:
+        raise RuntimeError("Set GOOGLE_CLOUD_PROJECT to your GCP project.")
+    return project
 
 
 def _location() -> str:

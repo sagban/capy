@@ -120,6 +120,6 @@ guard let png = rep.representation(using: .png, properties: [:]) else {
 }
 let out = CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]
-    : "capy/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+    : "app/capy/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
 try png.write(to: URL(fileURLWithPath: out))
 print("wrote \(out)")

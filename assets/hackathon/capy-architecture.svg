@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#F3EFE7"/>
+  <text x="64" y="72" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="700" fill="#1F1B16">Capy</text>
+  <text x="64" y="108" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#6B645A">Alexa+ and the phone share one diary</text>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1FA971"/>
+    </marker>
+  </defs>
+
+  <!-- Clients -->
+  <rect x="64" y="180" width="250" height="110" rx="16" fill="#FFFCF7" stroke="#1FA971" stroke-width="2"/>
+  <text x="84" y="222" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#1F1B16">Alexa+</text>
+  <text x="84" y="252" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">Spoken meal</text>
+
+  <rect x="64" y="330" width="250" height="110" rx="16" fill="#FFFCF7" stroke="#1F1B16" stroke-width="2"/>
+  <text x="84" y="372" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#1F1B16">iPhone</text>
+  <text x="84" y="402" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">Confirm, then the Food Log</text>
+
+  <!-- Edge -->
+  <rect x="420" y="240" width="280" height="140" rx="16" fill="#1FA971"/>
+  <text x="440" y="292" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#FFFCF7">Amazon API Gateway</text>
+  <text x="440" y="326" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#E8FFF4">Bearer on every call</text>
+  <text x="440" y="352" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#E8FFF4">No bearer, no diary</text>
+
+  <!-- Compute -->
+  <rect x="800" y="160" width="320" height="130" rx="16" fill="#FFFCF7" stroke="#1FA971" stroke-width="2"/>
+  <text x="820" y="202" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1F1B16">AWS App Runner</text>
+  <text x="820" y="232" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">Capy MCP, POST /mcp/</text>
+  <text x="820" y="258" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">Streamable HTTP, writes on the call</text>
+
+  <rect x="800" y="330" width="320" height="130" rx="16" fill="#FFFCF7" stroke="#1F1B16" stroke-width="2"/>
+  <text x="820" y="372" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1F1B16">AWS Lambda</text>
+  <text x="820" y="402" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">interpret_meal</text>
+  <text x="820" y="428" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">First write waits for confirm</text>
+
+  <!-- Shared -->
+  <rect x="1220" y="160" width="316" height="100" rx="16" fill="#FFFCF7" stroke="#1FA971" stroke-width="2"/>
+  <text x="1240" y="200" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1F1B16">Amazon Bedrock</text>
+  <text x="1240" y="228" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">The model. It cannot mint the plate.</text>
+
+  <rect x="1220" y="284" width="316" height="150" rx="16" fill="#FFFCF7" stroke="#1F1B16" stroke-width="2"/>
+  <text x="1240" y="322" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1F1B16">Meal tools</text>
+  <text x="1240" y="352" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6B645A">Look up the food</text>
+  <text x="1240" y="376" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6B645A">portion_to_grams</text>
+  <text x="1240" y="400" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6B645A">write_food_entry, get_diary</text>
+
+  <rect x="1220" y="458" width="316" height="120" rx="16" fill="#1F1B16"/>
+  <text x="1240" y="500" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#FFFCF7">Amazon DynamoDB</text>
+  <text x="1240" y="530" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#C6F0DC">Diary, profile, library</text>
+  <text x="1240" y="554" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#C6F0DC">One record, two doors</text>
+
+  <!-- Arrows -->
+  <line x1="314" y1="235" x2="410" y2="290" stroke="#1FA971" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="314" y1="385" x2="410" y2="330" stroke="#1F1B16" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="280" x2="790" y2="220" stroke="#1FA971" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="320" x2="790" y2="390" stroke="#1F1B16" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="1120" y1="220" x2="1210" y2="210" stroke="#1FA971" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="1120" y1="395" x2="1210" y2="360" stroke="#1F1B16" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="1378" y1="434" x2="1378" y2="450" stroke="#1FA971" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- Bottom services -->
+  <rect x="64" y="560" width="340" height="100" rx="16" fill="#FFFCF7" stroke="#6B645A" stroke-width="1.5"/>
+  <text x="84" y="600" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F1B16">Amazon Cognito</text>
+  <text x="84" y="628" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6B645A">Signs the bearer for Alexa+ and the phone</text>
+
+  <rect x="428" y="560" width="340" height="100" rx="16" fill="#FFFCF7" stroke="#6B645A" stroke-width="1.5"/>
+  <text x="448" y="600" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F1B16">AWS Secrets Manager</text>
+  <text x="448" y="628" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6B645A">USDA key. Never in the app.</text>
+
+  <rect x="792" y="560" width="360" height="100" rx="16" fill="#FFFCF7" stroke="#6B645A" stroke-width="1.5"/>
+  <text x="812" y="600" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F1B16">USDA FoodData Central</text>
+  <text x="812" y="628" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#6B645A">Lookup when the catalog misses</text>
+
+  <text x="64" y="820" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#6B645A">Alexa+ writes on the call. The phone stages the same food, grams, and per-100g numbers, then confirms.</text>
+</svg>

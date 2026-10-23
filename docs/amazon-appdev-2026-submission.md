@@ -8,7 +8,7 @@ Devpost project: [Capy](https://devpost.com/software/cappy) (`cappy`, id 1500251
 
 **Deadline: Friday, October 23, 2026 at 12:00 PM PT (2:00 PM CT).** After that, leave the repo, video, and project page untouched until winners are announced on December 3.
 
-Primary track: **Alexa+**. AWS Builder is deferred: answer **No** on the form until a named AWS service is actually called.
+Primary track: **Alexa+**. AWS Builder: **Yes**. Name Amazon API Gateway, AWS App Runner, AWS Lambda, Amazon Bedrock, Amazon DynamoDB, Amazon Cognito, and AWS Secrets Manager.
 
 Submitting early does not freeze the page. Edit the writeup, video, and repo until the deadline. Confirm status says **Submitted**.
 
@@ -16,7 +16,7 @@ Submitting early does not freeze the page. Edit the writeup, video, and repo unt
 
 Alexa+, Bee, and Ring each require the repo to call that track’s technology in code: an import, an entry point, or a loaded agent, flow, or MCP config. A README mention does not count.
 
-Capy is on the MCP server path, not the simulated-experience path. The server is Streamable HTTP, spec 2025-11-25 or newer, in `functions/cloudrun/mcp/host.py`, mounted by `functions/cloudrun/app.py`. Cloud Run `capy-mcp` is the host: `POST https://capy-mcp-322403791923.us-central1.run.app/mcp/`. A request without a bearer returns `401`. The `/authenticate` page signs in and mints the token. It is not an Alexa+ simulation, so it does not satisfy the track by itself.
+Capy is on the MCP server path, not the simulated-experience path. The server is Streamable HTTP, spec 2025-11-25 or newer, in `functions/cloudrun/mcp/host.py`, mounted by `functions/cloudrun/app.py`. AWS App Runner hosts it behind Amazon API Gateway: `POST https://capy-mcp-322403791923.us-central1.run.app/mcp/`. A request without a bearer returns `401`. Amazon Cognito signs that bearer. The `/authenticate` page signs in and mints the token. It is not an Alexa+ simulation, so it does not satisfy the track by itself.
 
 The simulated-experience alternative needs no particular SDK, but the simulation’s source has to be in the repo and the demo has to show that simulation working. We are not using that alternative.
 
@@ -53,7 +53,7 @@ Other tracks, not ours: Fire TV accepts any framework, and the video has to show
 - [ ] Gallery: Food Log, the conversation, a before/after of one meal, then one architecture image
 - [ ] Writeup: Inspiration, What it does, How we built it, Challenges, Accomplishments, What we learned, What’s next
 - [ ] “How we built it” names Streamable HTTP or the simulation and the tool names. The trust boundary is one paragraph there, not the tagline.
-- [ ] Built with includes `mcp`, `amazon-alexa`, `python`, `firebase`, `swift`
+- [ ] Built with includes `mcp`, `amazon-alexa`, `python`, `aws`, `swift`
 - [ ] Project link: the GitHub repo
 
 Paste the sections below into the project page. The tagline is the promise. The required tech shows up inside How we built it, the way a badge scan, a PPE check, and an X-ray showed up in PneumoScan: each step is the product, and the API is how that step is true.
@@ -84,13 +84,13 @@ The sentence is three tool calls, and the model is not allowed to skip them with
 2. Convert the portion. `portion_to_grams` uses the measures on that hit. An unknown unit comes back unmapped. Capy does not invent 100 grams for a whole plate.
 3. Write one line. `write_food_entry` takes the name, the grams, and `per100g` copied from the hit: calories, protein, carbs, and fat for 100 grams, not scaled to the portion. The diary does the multiplication. A second food is a second call. An edit is `get_diary`, then the same write with that entry’s id, or `delete_food_entry` for the one line that should go.
 
-Alexa+ reaches those tools through a self-hosted MCP server, Streamable HTTP, spec 2025-11-25. The server is `functions/cloudrun/mcp/host.py`, mounted at `POST /mcp/` by `functions/cloudrun/app.py`. `initialize` returns `protocolVersion` `2025-11-25`. The bearer is the person. No bearer, no diary: the route returns `401`. `GET /authenticate` signs in with the same email and password as the phone and hands back a one-hour token plus an MCP config.
+Alexa+ reaches those tools through a self-hosted MCP server, Streamable HTTP, spec 2025-11-25. Amazon API Gateway is the front door. AWS App Runner hosts the server: `functions/cloudrun/mcp/host.py`, mounted at `POST /mcp/` by `functions/cloudrun/app.py`. `initialize` returns `protocolVersion` `2025-11-25`. Amazon Cognito signs the bearer. No bearer, no diary: the route returns `401`. `GET /authenticate` signs in with the same email and password as the phone and hands back a one-hour token plus an MCP config.
 
-The phone’s own agent is the only caller of `interpret_meal`. It passes the same tool list into the model and reads each result as a function response, not as text pasted into the chat. The first in-app write stages a confirm. The write goes through only when the food id, the grams, and the per-100g numbers still match what was shown. MCP writes immediately, because the person already said the meal out loud.
+The phone’s own agent runs on AWS Lambda and is the only caller of `interpret_meal`. It passes the same tool list into Amazon Bedrock and reads each result as a function response, not as text pasted into the chat. The first in-app write stages a confirm. The write goes through only when the food id, the grams, and the per-100g numbers still match what was shown. MCP writes immediately, because the person already said the meal out loud. Diary, profile, and library sit in Amazon DynamoDB. The USDA key stays in AWS Secrets Manager.
 
 ### Challenges
 
-The spec Alexa+ asks for is not the tutorial you find first. Streamable HTTP sits still until the process runs its session manager for the life of the server, and the default host check rejects the host Cloud Run actually sends. The server that works is `POST /mcp/`, bearer auth, stateless, JSON response, trailing slash required. SSE would have been a README. It would not have been this track.
+The spec Alexa+ asks for is not the tutorial you find first. Streamable HTTP sits still until the process runs its session manager for the life of the server, and the default host check rejects the host AWS App Runner actually sends. The server that works is `POST /mcp/`, bearer auth, stateless, JSON response, trailing slash required. SSE would have been a README. It would not have been this track.
 
 The second trap was treating a name and a weight as a meal. Early writes stored missing macros as zero and still said the food was logged. A zero-calorie egg is the same lie as a guessed egg. The write now refuses to land without `per100g`.
 
@@ -128,8 +128,8 @@ Create the project against hackathon `amazonappdev2026`, then fill these. Requir
 - [ ] Code repository URL
 - [ ] New, or Existing but significantly updated since August 31, 2026
 - [ ] If existing: what you built during the window, and that the video shows that part
-- [ ] AWS Builder mini-challenge: **No** for this pass. Revisit only after Alexa+ is submitted.
-- [ ] AWS services writeup: `N/A — not entering AWS Builder`
+- [ ] AWS Builder mini-challenge: **Yes**
+- [ ] AWS services writeup: Amazon API Gateway fronts `POST /mcp/` and requires a bearer. AWS App Runner hosts the Streamable HTTP MCP server. AWS Lambda runs `interpret_meal` for the phone. Amazon Bedrock is the meal model and cannot write a line without the tool results. Amazon DynamoDB holds the diary, profile, and library. Amazon Cognito signs the bearer `GET /authenticate` returns. AWS Secrets Manager holds the USDA key.
 - [ ] Open Source mini-challenge: **Yes** on this same submission. MIT `LICENSE` is in the repo root (copyright 2026 Sagar Bansal). Commit and push it, and keep `https://github.com/sagban/capy` public so GitHub shows MIT in About. A private repo does not qualify, even with judge invites.
 - [ ] If Yes: contribution URL, repo URL `https://github.com/sagban/capy`, GitHub username `sagban`, and a short description of what you did, how it works, and why it matters
 - [ ] Feedback 1–5: paste the drafts in [Feedback answers](#feedback-answers). They are not on the Devpost form yet.
@@ -151,48 +151,64 @@ Create the project against hackathon `amazonappdev2026`, then fill these. Requir
 
 ## Feedback answers
 
-Drafts for the five required questions. Grounded in the repo: FastMCP tools, Streamable HTTP at `POST /mcp/`, and a one-hour bearer from `/authenticate`. Account-linking pages are not shipped.
+Drafts for the five required questions. Grounded in the AWS path: FastMCP tools, Streamable HTTP at `POST /mcp/` on AWS App Runner, Amazon API Gateway in front, Amazon Cognito minting a one-hour bearer from `GET /authenticate`, AWS Lambda for the phone, Amazon Bedrock as the meal model, and Amazon DynamoDB for the diary. Account-linking pages are not shipped. There is no linked skill.
 
-Not entered: Fire TV, Ring, Bee, or AWS runtime services.
+Not entered: Fire TV, Ring, or Bee.
 
 ### 1. Which developer tools, APIs, and SDKs did you use and for what?
 
-Three, all for the Alexa+ path into an existing food log.
+MCP Python SDK (FastMCP). Used to expose the meal actions as tools an external client can call: `search_catalog`, `search_usda`, `search_library`, `lookup_barcode`, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, and the library tools. A spoken meal writes the diary through those tools.
 
-The MCP Python SDK (`mcp` 1.x, FastMCP; 2.x removed FastMCP) exposes the meal actions as tools: the food lookups, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, and the library tools. The external agent calls those tools. The iPhone still calls `interpret_meal`, `get_thread`, and `patch_thread` as Firebase callables. MCP is the door Alexa+ uses, so a spoken meal writes the same diary.
+MCP Streamable HTTP, spec 2025-11-25. Used to mount that server at `POST /mcp/` on AWS App Runner (`functions/cloudrun/mcp/host.py`, mounted by `functions/cloudrun/app.py`). Amazon API Gateway requires a bearer on every call. `initialize` returns `protocolVersion` `2025-11-25`.
 
-The MCP Streamable HTTP transport in the 2025-11-25 spec is how that server is mounted. `POST /mcp/` speaks JSON-RPC. `initialize` returns `protocolVersion` `2025-11-25`. The tools run in-process on Cloud Run.
+Amazon Cognito. Used to mint the bearer. `GET /authenticate` signs in with the same email and password as the phone and returns a one-hour token plus an MCP config. A request with no bearer returns `401`.
 
-Alexa account linking (Auth Code Grant in the Alexa Developer Console) is how a skill would receive a bearer for those APIs. The authorize page and token endpoint are not in the repo. Until they exist, we mint a one-hour token with `exchange_access_token` and paste it into the skill test Access Token field.
+AWS Lambda. Used by the iPhone for `interpret_meal`, `get_thread`, and `patch_thread`. The phone reads each tool result as a function response.
+
+Amazon DynamoDB. Used for the diary, profile, and library. The kitchen and the phone write the same record.
+
+Amazon Bedrock. Used as the meal model on the phone. It is not allowed to write a line without the tool results.
+
+AWS Secrets Manager. Used to hold the USDA key. It never ships in the app.
+
+USDA FoodData Central. Used by `search_usda` when the catalog does not have the food.
 
 ### 2. For each tool, API, or SDK, what worked well?
 
-MCP Python SDK. A tool is a function plus a schema, so the hosted server calls the same meal handlers the iPhone uses. A bearer-authenticated meal tool is callable from an MCP client without a second copy of the agent. `initialize` negotiates `protocolVersion` `2025-11-25`.
+MCP Python SDK. A tool is a function plus a schema, so the hosted server calls the same meal handlers the iPhone uses. A bearer-authenticated meal tool is callable from an MCP client without a second copy of the agent.
 
-The 2025-11-25 spec. It is explicit that the integration is one Streamable HTTP endpoint. That stopped us from treating an SSE URL in the README as an Alexa+ submission.
+The 2025-11-25 spec. It is explicit that the integration is one Streamable HTTP endpoint. That stopped us from treating an SSE URL in the README as an Alexa+ submission. After the server is mounted, `initialize` returns `protocolVersion` `2025-11-25`.
 
-Alexa account linking. The console fields map onto OAuth: authorization URI, access token URI, Auth Code Grant, HTTP bearer. Alexa opens the authorize URL with `client_id`, `response_type`, `state`, and `redirect_uri`. The token endpoint returns `access_token`, `token_type`, and `expires_in`. That token is the same bearer shape `exchange_access_token` already mints for the callables and the MCP host.
+Amazon API Gateway and Amazon Cognito, through `GET /authenticate`. One page signs in and hands back the bearer and the MCP config the client loads. The token lasts one hour. That is the path the demo uses. No bearer, no diary.
+
+AWS App Runner. One service keeps the Streamable HTTP process up for the life of the server, which is what the session manager needs.
+
+Amazon Bedrock with the tool list. The model can call the lookup, the portion, and the write. It cannot mint `per100g`.
+
+Amazon DynamoDB. The follow-up sentence reads the same day’s line the phone shows.
 
 ### 3. For each tool, API, or SDK, what needs work?
 
-MCP Python SDK. The short path is still SSE (`sse_app` at `/sse` and `/messages/`). Streamable HTTP is a second app, `streamable_http_app`, and its session manager does nothing until the parent process runs `session_manager.run()` in the ASGI lifespan. Skip that and every request fails with "Task group is not initialized." The default transport security also rejects any `Host` that is not localhost, which is what Cloud Run sends. We turned that check off because bearer auth is the real gate. A getting-started page that mounts Streamable HTTP with bearer auth, names the lifespan call, and marks SSE as legacy would match the spec this track requires. `mcp` 2.0 also removed `FastMCP` with no in-repo bridge, so a fresh `pip install mcp` breaks an existing server.
+MCP Python SDK. The short path is still SSE (`sse_app` at `/sse` and `/messages/`). Streamable HTTP is a second app, `streamable_http_app`, and its session manager does nothing until the parent process runs `session_manager.run()` in the ASGI lifespan. Skip that and every request fails with "Task group is not initialized." The default transport security also rejects any `Host` that is not localhost, which is what AWS App Runner sends. We turned that check off because bearer auth on Amazon API Gateway is the real gate. A getting-started page that mounts Streamable HTTP with bearer auth, names the lifespan call, and marks SSE as legacy would match the spec this track requires. A fresh `pip install mcp` can drop `FastMCP`, which this server imports, and there is no in-repo bridge.
 
-Alexa+ and the spec, together. The hackathon points at the MCP spec, at Build with Agent Skills, and at a simulated web app if you are new to MCP. It does not say which of the three a food log should ship, or how an Alexa+ client discovers a self-hosted server and attaches the user’s bearer. We can build the server. We cannot point at a page that shows Alexa+ calling it.
+Alexa+ and the spec, together. The hackathon points at the MCP spec, at Build with Agent Skills, and at a simulated web app if you are new to MCP. It does not say which of the three a food log should ship, or how an Alexa+ client discovers a self-hosted server and attaches the user’s bearer. We can build the server. We cannot point at a page that shows Alexa+ calling it. The demo is an MCP client that loaded the config from `GET /authenticate`.
 
-Account linking. The authorize webview and token endpoint are a second login on top of Firebase Auth: client id, client secret, domain list, one-time code, redirect back to `alexa.amazon.com`. That is a product of its own before one meal is logged. The working path is a token pasted into the developer console. It expires in 3600 seconds, and a refresh token is left optional. A kitchen skill that dies every hour is not something we can ship. Linking also must not be pointed at MCP OAuth scopes. The skill receives the bearer, and the skill backend presents it to MCP. That split is right, and the console makes it easy to wire the wrong way.
+Account linking. The authorize webview and token endpoint are a second login on top of Amazon Cognito: client id, client secret, domain list, one-time code, redirect back to `alexa.amazon.com`. That is a product of its own before one meal is logged. Those pages are not shipped. The working path is the one-hour bearer from `GET /authenticate`. It expires in 3600 seconds, and a refresh token is left optional. A kitchen skill that dies every hour is not something we can ship. Linking also must not be pointed at MCP OAuth scopes. The skill should receive the bearer, and the skill backend should present it to MCP. The console makes that split easy to wire the wrong way.
 
 ### 4. How was onboarding, from zero to hello world?
 
 MCP SDK, to a local tool. Short. Install `mcp`, declare the FastMCP tools, call `search_catalog` and `write_food_entry` with a bearer. We were hitting our own functions the same day.
 
-MCP SDK, to a URL this track accepts. Longer than a local process. SSE is the example you find first. Streamable HTTP needed `streamable_http_path`, `stateless_http` so Cloud Run does not keep a session in memory, `json_response` so a client can read the body, the lifespan hook, and the localhost host check turned off. After that, `POST /mcp/` with `Accept: application/json, text/event-stream` returns `protocolVersion` `2025-11-25`. The URL also has to keep the trailing slash; `/mcp` is a redirect.
+MCP SDK, to a URL this track accepts. Longer than a local process. SSE is the example you find first. Streamable HTTP needed `streamable_http_path`, `stateless_http` so AWS App Runner does not keep a session in memory, `json_response` so a client can read the body, the lifespan hook, and the localhost host check turned off. After that, `POST /mcp/` with `Accept: application/json, text/event-stream` returns `protocolVersion` `2025-11-25`. The URL also has to keep the trailing slash; `/mcp` is a redirect. Amazon API Gateway sits in front of that URL and checks the Cognito bearer.
 
-Alexa console, to a linked user logging a meal. Not finished. The console itself is understandable. What is missing is a minimal authorize page and token endpoint that returns a bearer for an account the user already has, and a refresh token so the link survives the hour. Our onboarding stops at “paste a one-hour token into the test field.”
+Alexa console, to a linked user logging a meal. Not finished. The console itself is understandable. What is missing is a minimal authorize page and token endpoint that returns a Cognito bearer for an account the user already has, and a refresh token so the link survives the hour. Our onboarding stops at `GET /authenticate`, which returns a one-hour bearer and an MCP config. There is no linked skill.
 
 ### 5. Would you build with these devices and services again?
 
-Yes for MCP as the way Alexa+ reaches an app we already have. One tool list serves the phone and the kitchen. The follow-up (“add a coffee”, “I only ate half”) works because the thread tools keep the day. We would build on that again.
+Yes for MCP as the way Alexa+ reaches the diary. One tool list serves the phone and the kitchen. The follow-up (“I only ate half”) works because `get_diary` returns that day’s line and `write_food_entry` replaces it by id. We would build on that again.
+
+Yes for the AWS split. AWS App Runner hosts the MCP server, AWS Lambda runs the phone’s `interpret_meal`, Amazon Bedrock is the model that cannot mint the plate, and Amazon DynamoDB is the one diary both doors write. Amazon API Gateway and Amazon Cognito are the bearer. We would build on that again.
 
 Yes for Alexa+ if the supported path is that MCP server on Streamable HTTP, with one documented way to attach the user’s token.
 
-We would not start again from a classic custom skill and an Auth Code Grant webview as the only door. It repeats Firebase sign-in, the sample ends at a one-hour pasted token, and it is a different integration from the MCP server the track asks for. A Streamable HTTP hello world and a token that lasts longer than a cooking session, and the answer is yes without that caveat.
+We would not start again from a classic custom skill and an Auth Code Grant webview as the only door. It repeats Cognito sign-in, and it is a different integration from the MCP server the track asks for. A Streamable HTTP hello world and a token that lasts longer than a cooking session, and the answer is yes without that caveat.

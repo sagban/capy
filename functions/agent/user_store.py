@@ -20,6 +20,7 @@ from schemas import (
     MacroTotals,
     MealPlanSlot,
     PreferenceContext,
+    normalize_firebase_payload,
 )
 
 logger = logging.getLogger("capy.user_store")
@@ -97,7 +98,9 @@ def get_profile(uid: str) -> dict[str, Any]:
     if not snap.exists:
         return default_profile_dict()
     data = snap.to_dict() or {}
-    merged = {**default_profile_dict(), **data}
+    merged = normalize_firebase_payload({**default_profile_dict(), **data})
+    if not isinstance(merged, dict):
+        merged = default_profile_dict()
     merged.setdefault("schemaVersion", SCHEMA_VERSION)
     return merged
 
@@ -115,7 +118,10 @@ def patch_profile(uid: str, patch: dict[str, Any]) -> dict[str, Any]:
         "responseStyle",
         "longTermMemory",
     }
-    updates = {k: v for k, v in patch.items() if k in allowed and v is not None}
+    normalized = normalize_firebase_payload(patch)
+    if not isinstance(normalized, dict):
+        normalized = {}
+    updates = {k: v for k, v in normalized.items() if k in allowed and v is not None}
     if not updates:
         return get_profile(uid)
     updates["updatedAt"] = datetime.utcnow().isoformat() + "Z"
@@ -166,7 +172,9 @@ def _diary_entries_from_meal_doc(entry_id: str, data: dict[str, Any]) -> list[Di
 def _load_day_entries(uid: str, day_key: str) -> list[DiaryEntry]:
     rows: list[DiaryEntry] = []
     for snap in _entries(uid, day_key).stream():
-        data = snap.to_dict() or {}
+        data = normalize_firebase_payload(snap.to_dict() or {})
+        if not isinstance(data, dict):
+            continue
         if data.get("deleted"):
             continue
         if not data.get("confirmed", True):

@@ -2,26 +2,131 @@ import SwiftUI
 import SwiftData
 
 struct SettingsRootView: View {
+    @Environment(AuthManager.self) private var auth
+
     var body: some View {
         List {
+            Section {
+                NavigationLink {
+                    UserDetailsView()
+                } label: {
+                    HStack(spacing: 14) {
+                        ProfileAvatar(name: auth.displayName, photoURL: auth.photoURL, size: 56)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(auth.displayName)
+                                .font(.headline)
+                                .foregroundStyle(Color.capy.textPrimary)
+                            if let email = auth.email {
+                                Text(email)
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.capy.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
             Section("General") {
-                NavigationLink("User Profile") { UserDetailsView() }
-                NavigationLink("Regional & units") { GeneralSettingsView() }
+                NavigationLink {
+                    ColorThemeSettingsView()
+                } label: {
+                    Label("Color theme", systemImage: "paintpalette")
+                }
+                NavigationLink {
+                    GeneralSettingsView()
+                } label: {
+                    Label("Regional & units", systemImage: "globe")
+                }
             }
             Section("Nutrition") {
-                NavigationLink("Goals") { GoalsSettingsView() }
-                NavigationLink("Meal types") { MealTypesSettingsView() }
-                NavigationLink("Food preferences") { PreferencesSettingsView(kind: .like) }
-                NavigationLink("Diets") { PreferencesSettingsView(kind: .diet) }
+                NavigationLink {
+                    GoalsSettingsView()
+                } label: {
+                    Label("Goals", systemImage: "target")
+                }
+                NavigationLink {
+                    MealTypesSettingsView()
+                } label: {
+                    Label("Meal types", systemImage: "fork.knife")
+                }
+                NavigationLink {
+                    PreferencesSettingsView()
+                } label: {
+                    Label("Food preferences", systemImage: "leaf")
+                }
             }
             Section("Capy") {
-                NavigationLink("Capy Settings") { CapySettingsView() }
-                NavigationLink("Memory") { MemorySheetView(embedsNavigation: false) }
-                NavigationLink("MCP token") { MCPTokenSettingsView() }
+                NavigationLink {
+                    CapySettingsView()
+                } label: {
+                    Label("Capy Settings", systemImage: "bubble.left.and.bubble.right")
+                }
+                NavigationLink {
+                    MemorySheetView(embedsNavigation: false)
+                } label: {
+                    Label("Memory", systemImage: "brain.head.profile")
+                }
+                NavigationLink {
+                    MCPTokenSettingsView()
+                } label: {
+                    Label("MCP token", systemImage: "key")
+                }
             }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct ColorThemeSettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var settings: [AppSettings]
+
+    @State private var theme: ColorTheme = .system
+
+    var body: some View {
+        Form {
+            Section {
+                Label {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Color theme")
+                            .font(.title2.weight(.bold))
+                        Text("Choose light or dark, or follow your iPhone appearance.")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.capy.textSecondary)
+                    }
+                } icon: {
+                    Image(systemName: "paintpalette")
+                        .font(.title2)
+                        .foregroundStyle(Color.capy.accent)
+                }
+            }
+
+            Section {
+                Picker("Color theme", selection: $theme) {
+                    ForEach(ColorTheme.allCases) { option in
+                        Label(option.title, systemImage: option.symbol).tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } footer: {
+                Text("Light and dark use the Capy palette. System follows Appearance in iPhone Settings.")
+            }
+        }
+        .navigationTitle("Color theme")
+        .onAppear(perform: load)
+        .onChange(of: theme) { _, _ in save() }
+    }
+
+    private func load() {
+        theme = settings.first?.colorTheme ?? .system
+    }
+
+    private func save() {
+        let s = settings.first ?? AppSettings()
+        if settings.isEmpty { modelContext.insert(s) }
+        s.colorTheme = theme
     }
 }
 
@@ -395,50 +500,103 @@ struct PreferencesSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \UserPreference.createdAt, order: .reverse) private var prefs: [UserPreference]
 
-    let kind: PreferenceKind
+    @State private var page: PreferenceKind = .diet
+
+    private static let foodPages: [PreferenceKind] = [.diet, .like, .dislike, .allergy]
+
+    private var activeKind: PreferenceKind { page }
 
     var body: some View {
-        Form {
-            if kind == .diet {
-                PreferenceMultiSelectSection(
-                    title: "Diets & patterns",
-                    kind: .diet,
-                    options: PreferenceCatalog.diets,
-                    prefs: prefs,
-                    modelContext: modelContext
-                )
-            } else {
-                PreferenceMultiSelectSection(
-                    title: "Likes",
-                    kind: .like,
-                    options: PreferenceCatalog.likes,
-                    prefs: prefs,
-                    modelContext: modelContext
-                )
-                PreferenceMultiSelectSection(
-                    title: "Dislikes",
-                    kind: .dislike,
-                    options: PreferenceCatalog.dislikes,
-                    prefs: prefs,
-                    modelContext: modelContext
-                )
-                PreferenceMultiSelectSection(
-                    title: "Allergies & restrictions",
-                    kind: .allergy,
-                    options: PreferenceCatalog.allergies,
-                    prefs: prefs,
-                    modelContext: modelContext
-                )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                PreferencePageTabs(page: $page, pages: Self.foodPages)
+                Text(hint(for: activeKind))
+                    .font(.subheadline)
+                    .foregroundStyle(Color.capy.textSecondary)
+                preferencePills
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .navigationTitle(kind == .diet ? "Diets" : "Food preferences")
+        .background(Color.capy.background)
+        .navigationTitle("Food preferences")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var preferencePills: some View {
+        switch activeKind {
+        case .diet:
+            PreferencePillGrid(kind: .diet, options: Array(PreferenceCatalog.Diet.allCases), prefs: prefs, modelContext: modelContext)
+        case .like:
+            PreferencePillGrid(kind: .like, options: Array(PreferenceCatalog.Like.allCases), prefs: prefs, modelContext: modelContext)
+        case .dislike:
+            PreferencePillGrid(kind: .dislike, options: Array(PreferenceCatalog.Dislike.allCases), prefs: prefs, modelContext: modelContext)
+        case .allergy:
+            PreferencePillGrid(kind: .allergy, options: Array(PreferenceCatalog.Allergy.allCases), prefs: prefs, modelContext: modelContext)
+        }
+    }
+
+    private func hint(for kind: PreferenceKind) -> String {
+        switch kind {
+        case .like: "Foods Capy can suggest."
+        case .dislike: "Foods to leave out."
+        case .allergy: "Kept out of suggestions."
+        case .diet: "Patterns you follow."
+        }
     }
 }
 
-private struct PreferenceMultiSelectSection: View {
-    let title: String
+private struct PreferencePageTabs: View {
+    @Binding var page: PreferenceKind
+    let pages: [PreferenceKind]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(pages) { item in
+                    let selected = page == item
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { page = item }
+                    } label: {
+                        Label(tabTitle(item), systemImage: tabSymbol(item))
+                            .font(.subheadline.weight(.semibold))
+                            .labelStyle(.titleAndIcon)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(selected ? Color.white : Color.capy.textPrimary)
+                            .background(selected ? Color.capy.accent : Color.capy.surfaceElevated, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+        }
+    }
+
+    private func tabTitle(_ kind: PreferenceKind) -> String {
+        switch kind {
+        case .like: "Likes"
+        case .dislike: "Dislikes"
+        case .allergy: "Allergies"
+        case .diet: "Diets"
+        }
+    }
+
+    private func tabSymbol(_ kind: PreferenceKind) -> String {
+        switch kind {
+        case .like: "heart.fill"
+        case .dislike: "hand.thumbsdown.fill"
+        case .allergy: "allergens"
+        case .diet: "fork.knife"
+        }
+    }
+}
+
+private struct PreferencePillGrid<Option: PreferenceChoice>: View {
     let kind: PreferenceKind
-    let options: [String]
+    let options: [Option]
     let prefs: [UserPreference]
     let modelContext: ModelContext
 
@@ -447,22 +605,30 @@ private struct PreferenceMultiSelectSection: View {
     }
 
     var body: some View {
-        Section(title) {
-            ForEach(options, id: \.self) { option in
+        PreferenceFlow(spacing: 8) {
+            ForEach(options) { option in
+                let selected = selectedValues.contains(option.title)
                 Button {
-                    toggle(option)
+                    withAnimation(.snappy(duration: 0.15)) { toggle(option.title) }
                 } label: {
-                    HStack {
-                        Text(option)
-                            .foregroundStyle(Color.primary)
-                        Spacer()
-                        if selectedValues.contains(option) {
-                            Image(systemName: "checkmark")
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Color.capy.accent)
-                        }
+                    HStack(spacing: 6) {
+                        Text(option.emoji)
+                            .accessibilityHidden(true)
+                        Text(option.title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(selected ? Color.capy.accent : Color.capy.textPrimary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(selected ? Color.capy.accentSoft : Color.capy.surfaceElevated, in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(selected ? Color.capy.accent : Color(.separator), lineWidth: selected ? 1.5 : 0.5)
                     }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.title)
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
     }
@@ -477,12 +643,67 @@ private struct PreferenceMultiSelectSection: View {
     }
 }
 
+private struct PreferenceFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        let rows = rows(for: width, subviews: subviews)
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = rows(for: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        var index = 0
+        for row in rows {
+            var x = bounds.minX
+            for size in row.sizes {
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y),
+                    proposal: ProposedViewSize(width: size.width, height: size.height)
+                )
+                x += size.width + spacing
+                index += 1
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private func rows(for width: CGFloat, subviews: Subviews) -> [(height: CGFloat, sizes: [CGSize])] {
+        var rows: [(height: CGFloat, sizes: [CGSize])] = []
+        var sizes: [CGSize] = []
+        var rowWidth: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            let next = rowWidth == 0 ? size.width : rowWidth + spacing + size.width
+            if rowWidth > 0, next > width {
+                rows.append((rowHeight, sizes))
+                sizes = [size]
+                rowWidth = size.width
+                rowHeight = size.height
+            } else {
+                sizes.append(size)
+                rowWidth = next
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
+        if !sizes.isEmpty {
+            rows.append((rowHeight, sizes))
+        }
+        return rows
+    }
+}
+
 struct CapySettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var settings: [AppSettings]
 
     @State private var level: AssistanceLevel = .fullAssist
     @State private var responseStyle: ResponseStyle = .balanced
+    @State private var voiceName: CapyVoice = .puck
     @State private var hour = 18
     @State private var minute = 0
     @State private var ready = false
@@ -505,6 +726,14 @@ struct CapySettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            Section("Voice") {
+                Picker("Voice", selection: $voiceName) {
+                    ForEach(CapyVoice.allCases) { Text($0.title).tag($0) }
+                }
+                Text(voiceName.subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             if level == .guided {
                 Section("Evening check-in (in-app)") {
                     Stepper("Hour: \(hour)", value: $hour, in: 12...22)
@@ -517,6 +746,7 @@ struct CapySettingsView: View {
             if let s = settings.first {
                 level = s.assistanceLevel
                 responseStyle = s.responseStyle
+                voiceName = s.voiceName
                 hour = s.guidedCheckInHour
                 minute = s.guidedCheckInMinute
             }
@@ -527,6 +757,10 @@ struct CapySettingsView: View {
             save()
         }
         .onChange(of: responseStyle) { _, _ in
+            guard ready else { return }
+            save()
+        }
+        .onChange(of: voiceName) { _, _ in
             guard ready else { return }
             save()
         }
@@ -545,9 +779,43 @@ struct CapySettingsView: View {
         if settings.isEmpty { modelContext.insert(s) }
         s.assistanceLevel = level
         s.responseStyle = responseStyle
+        s.voiceName = voiceName
         s.guidedCheckInHour = hour
         s.guidedCheckInMinute = minute
         UserSyncService.shared.scheduleProfileSync(in: modelContext)
+    }
+}
+
+struct ProfileAvatar: View {
+    let name: String
+    let photoURL: URL?
+    var size: CGFloat = 56
+
+    var body: some View {
+        Group {
+            if let photoURL {
+                AsyncImage(url: photoURL) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        initials
+                    }
+                }
+            } else {
+                initials
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+
+    private var initials: some View {
+        Text(String(name.prefix(1)).uppercased())
+            .font(.system(size: size * 0.38, weight: .semibold))
+            .foregroundStyle(Color.capy.accent)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.capy.accentSoft)
     }
 }
 
@@ -556,24 +824,34 @@ struct UserDetailsView: View {
 
     var body: some View {
         Form {
+            Section {
+                VStack(spacing: 10) {
+                    ProfileAvatar(name: auth.displayName, photoURL: auth.photoURL, size: 88)
+                    Text(auth.displayName)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(Color.capy.textPrimary)
+                    if let email = auth.email {
+                        Text(email)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.capy.textSecondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
             Section("Account") {
                 LabeledContent("Name", value: auth.displayName)
                 if let email = auth.email {
                     LabeledContent("Email", value: email)
                 }
-                LabeledContent("Provider", value: "Google")
+                LabeledContent("Sign-in", value: auth.signInProvider)
             }
             Section {
                 Button("Sign out", role: .destructive) {
                     auth.signOut()
                 }
             }
-            Section {
-                Text("Sign in with Apple is deferred for now.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
         }
-        .navigationTitle("User details")
+        .navigationTitle("Profile")
     }
 }

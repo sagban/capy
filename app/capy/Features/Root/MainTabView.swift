@@ -23,6 +23,7 @@ struct MainTabView: View {
             await UserSyncService.shared.start()
             UserSyncService.shared.scheduleProfileSync(in: modelContext)
             await UserSyncService.shared.pullLibrary(into: modelContext)
+            await UserSyncService.shared.pullDiary(into: modelContext)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -30,8 +31,13 @@ struct MainTabView: View {
                     await UserSyncService.shared.flushPending()
                     UserSyncService.shared.scheduleProfileSync(in: modelContext)
                     await UserSyncService.shared.pullLibrary(into: modelContext)
+                    await UserSyncService.shared.pullDiary(into: modelContext)
                 }
             }
+        }
+        .onChange(of: selection) { _, tab in
+            guard tab == 0 else { return }
+            Task { await UserSyncService.shared.pullDiary(into: modelContext) }
         }
     }
 }

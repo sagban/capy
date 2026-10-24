@@ -192,39 +192,88 @@ def set_attrs(span: Any, attrs: dict[str, Any]) -> None:
             continue
 
 
+def _labels(rows: Any, *, limit: int = 8) -> list[str]:
+    labels: list[str] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("displayName") or row.get("name") or "").strip()
+        if not name:
+            continue
+        grams = row.get("grams")
+        if isinstance(grams, (int, float)) and not isinstance(grams, bool):
+            labels.append(f"{name} {grams:g} g")
+        else:
+            labels.append(name)
+        if len(labels) >= limit:
+            break
+    return labels
+
+
 def tool_result_summary(name: str, result: Any) -> dict[str, Any]:
-    """Compact Phoenix output for harness tool spans."""
+    """Compact Phoenix output for one tool result. Omits ids, macros, and full hit payloads."""
     if not isinstance(result, dict):
-        return {"ok": True, "tool": name}
-    out: dict[str, Any] = {
-        "tool": name,
-        "intent": result.get("intent"),
-        "error": result.get("error"),
-        "warnings": result.get("warnings") or [],
-    }
-    facts = result.get("phraseFacts") or {}
-    if facts.get("reason"):
-        out["reason"] = facts.get("reason")
-    if facts.get("dropped"):
-        out["dropped"] = facts.get("dropped")
-    options = result.get("suggestionOptions") or []
-    if options:
-        out["optionCount"] = len(options)
-        sources: list[str] = []
-        for opt in options:
-            for item in opt.get("items") or []:
-                src = item.get("source")
-                if src and src not in sources:
-                    sources.append(str(src))
-        out["optionSources"] = sources
-    pending = result.get("pendingAction")
-    if isinstance(pending, dict):
-        out["pending"] = pending.get("type")
-        payload = pending.get("payload") or {}
-        resolved = payload.get("resolvedItems") or []
-        if resolved:
-            out["resolvedSources"] = [str(i.get("source") or "") for i in resolved]
-            out["resolvedNames"] = [str(i.get("displayName") or "") for i in resolved][:6]
-        if payload.get("reason"):
-            out["pendingReason"] = payload.get("reason")
+        return {"tool": name, "ok": True}
+    out: dict[str, Any] = {"tool": name}
+    if result.get("error"):
+        out["error"] = result.get("error")
+        message = str(result.get("message") or "").strip()
+        if message:
+            out["message"] = message
+        return out
+    if "hits" in result:
+        hits = result.get("hits") or []
+        out["source"] = result.get("source")
+        out["hitCount"] = len(hits) if isinstance(hits, list) else 0
+        labels = _labels(hits)
+        if labels:
+            out["hits"] = labels
+        return out
+    if result.get("found") is False:
+        out["found"] = False
+        return out
+    if result.get("found") is True or result.get("displayName"):
+        out["found"] = bool(result.get("found", True))
+        label = str(result.get("displayName") or "").strip()
+        if label:
+            out["hits"] = [label]
+        if result.get("source"):
+            out["source"] = result.get("source")
+        return out
+    if "grams" in result:
+        out["grams"] = result.get("grams")
+        label = str(result.get("label") or "").strip()
+        if label:
+            out["label"] = label
+        return out
+    if result.get("unmapped"):
+        out["unmapped"] = True
+        return out
+    if "entries" in result:
+        entries = result.get("entries") or []
+        out["dayKey"] = result.get("dayKey")
+        out["entryCount"] = len(entries) if isinstance(entries, list) else 0
+        labels = _labels(entries)
+        if labels:
+            out["entries"] = labels
+        return out
+    if result.get("staged"):
+        out["staged"] = True
+        if result.get("pendingType"):
+            out["pendingType"] = result.get("pendingType")
+        labels = _labels(result.get("items"))
+        if labels:
+            out["items"] = labels
+        label = str(result.get("label") or "").strip()
+        if label:
+            out["label"] = label
+        return out
+    if result.get("wrote") or result.get("entryId"):
+        if result.get("wrote"):
+            out["wrote"] = True
+        if result.get("entryId"):
+            out["entryId"] = result.get("entryId")
+        if result.get("dayKey"):
+            out["dayKey"] = result.get("dayKey")
+        return out
     return out

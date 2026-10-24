@@ -25,6 +25,7 @@ struct capyApp: App {
                 MealTemplateItem.self,
                 SearchCacheEntry.self,
                 LongTermMemoryNote.self,
+                ChatMessageRecord.self,
             ])
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             do {

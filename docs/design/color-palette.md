@@ -20,11 +20,13 @@ Warm neutrals + a bright moss accent. Macro rings (calories / P / C / F) use sat
 | `capy.warning` | Over-budget factual note | `#E67E22` | `#FFB020` |
 | `capy.separator` | Hairlines if needed | use `Color(.separator)` | same |
 | `capy.budgetCalories` | Calorie emphasis | `#FF4D3A` | `#FF6B5A` |
-| `capy.budgetProtein` | Protein | `#FF5722` | `#FF7043` |
+| `capy.budgetProtein` | Protein | `#D81B60` | `#FF5C93` |
 | `capy.budgetCarbs` | Carbs | `#2B7FFF` | `#5CA3FF` |
 | `capy.budgetFat` | Fat | `#F5A524` | `#FFC14D` |
 
 Accent in Xcode: map `AccentColor` → `capy.accent`.
+
+Settings → Color theme chooses System, Light, or Dark. System follows the iPhone appearance. Light and Dark force the matching column above.
 
 ## Materials / liquid glass
 

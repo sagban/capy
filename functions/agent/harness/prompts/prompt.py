@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
 from agent.harness.prompts.assistance_level import instruction_block_for_assistance_level
 from agent.harness.prompts.response_style import instruction_block_for_response_style, temperature_for_response_style
 from schemas import InterpretMealRequest
@@ -67,40 +64,13 @@ def meal_agent_user(
     return f"{context_pack}{note}\n\nUser message:\n{utterance}"
 
 
-def _json_dict(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        value = {"result": value}
-    return json.loads(json.dumps(value, default=str))
-
-
-def tool_exchange(trace: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """Tool calls and their results, grouped by round, for the model channel."""
-    groups: list[dict[str, Any]] = []
-    current_key: Any = None
-    bucket: dict[str, Any] | None = None
-    for index, step in enumerate(trace or []):
-        if not isinstance(step, dict):
-            continue
-        key = step.get("round", index)
-        if bucket is None or key != current_key:
-            bucket = {"calls": [], "results": []}
-            groups.append(bucket)
-            current_key = key
-        name = str(step.get("name") or "")
-        arguments = step.get("arguments") if isinstance(step.get("arguments"), dict) else {}
-        bucket["calls"].append({"name": name, "arguments": _json_dict(arguments)})
-        bucket["results"].append({"name": name, "result": _json_dict(step.get("result"))})
-    return groups
-
-
 def turn_prompt(
     req: InterpretMealRequest,
     context_pack: str,
     *,
     validation_error: str = "",
-    tool_trace: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """The text, tool exchange, and sampling the harness hands to one model call."""
+) -> dict[str, str | list | float]:
+    """The system prompt, recent chat, this user message, and sampling for one conversation."""
     history = [
         {"role": turn.role if turn.role in {"user", "model"} else "user", "text": turn.text}
         for turn in (req.conversation.recentTurns or [])[-8:]
@@ -113,6 +83,5 @@ def turn_prompt(
             validation_error=validation_error,
         ),
         "history": history,
-        "tool_exchange": tool_exchange(tool_trace),
         "temperature": temperature_for_response_style(req.context.responseStyle),
     }

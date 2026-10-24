@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from agent.tools.diary_io import delete_meal, get_diary, write_food_entry
 from agent.tools.lookups import lookup_barcode, search_catalog, search_library, search_usda
 from agent.tools.portion import portion_to_grams
-from agent.tools.schema import declaration
 
 ToolFn = Callable[..., dict[str, Any]]
 
@@ -205,4 +204,13 @@ TOOLS: dict[str, ToolSpec] = {
 
 LOOKUP_NAMES = frozenset({"search_catalog", "search_usda", "search_library", "lookup_barcode"})
 
-TOOL_DECLARATIONS = [declaration(spec.name, spec.description, spec.args_model) for spec in TOOLS.values()]
+def _declaration(spec: ToolSpec) -> dict[str, Any]:
+    """Vertex accepts this Pydantic JSON Schema via parameters_json_schema."""
+    return {
+        "name": spec.name,
+        "description": spec.description,
+        "parameters_json_schema": spec.args_model.model_json_schema(),
+    }
+
+
+TOOL_DECLARATIONS = [_declaration(spec) for spec in TOOLS.values()]

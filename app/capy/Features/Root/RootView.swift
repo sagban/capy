@@ -32,6 +32,7 @@ struct RootView: View {
             }
         }
         .environment(\.unitPreferences, unitPreferences)
+        .preferredColorScheme(settings.first?.colorTheme.preferredColorScheme)
         .capyTypography()
         .task {
             // Brief beat so the first frame isn’t a hard cut — don’t hold the UI hostage.

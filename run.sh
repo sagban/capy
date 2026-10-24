@@ -8,10 +8,14 @@ cd "$ROOT"
 FUNCTIONS_DIR="$ROOT/functions"
 VENV="$FUNCTIONS_DIR/venv"
 PHOENIX_PID=""
+CLOUDRUN_PID=""
 
 cleanup() {
   if [[ -n "${PHOENIX_PID}" ]] && kill -0 "${PHOENIX_PID}" 2>/dev/null; then
     kill "${PHOENIX_PID}" 2>/dev/null || true
+  fi
+  if [[ -n "${CLOUDRUN_PID}" ]] && kill -0 "${CLOUDRUN_PID}" 2>/dev/null; then
+    kill "${CLOUDRUN_PID}" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -25,7 +29,8 @@ fi
 source "$VENV/bin/activate"
 pip install -q -r "$FUNCTIONS_DIR/requirements.txt"
 # Phoenix UI server (not imported by the Functions worker — keeps the runtime slim).
-pip install -q "arize-phoenix>=8.0.0"
+# Keep mcp<2 pinned since arize-phoenix pulls mcp>=2 otherwise.
+pip install -q "arize-phoenix>=8.0.0" "mcp>=1.12,<2"
 
 "$ROOT/configure.sh"
 
@@ -35,6 +40,13 @@ set -a
 # shellcheck disable=SC1090
 source "$FUNCTIONS_DIR/.env"
 set +a
+
+if [[ -f "$FUNCTIONS_DIR/.secret.local" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$FUNCTIONS_DIR/.secret.local"
+  set +a
+fi
 
 if [[ ! -f "$FUNCTIONS_DIR/.secret.local" ]]; then
   cat >"$FUNCTIONS_DIR/.secret.local" <<'EOF'
@@ -61,6 +73,8 @@ if [[ -z "${GOOGLE_CLOUD_QUOTA_PROJECT:-}" && -f .firebaserc ]]; then
   )"
 fi
 export GOOGLE_CLOUD_QUOTA_PROJECT="${GOOGLE_CLOUD_QUOTA_PROJECT:-}"
+export GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-${GOOGLE_CLOUD_QUOTA_PROJECT:-}}"
+export CAPY_PROJECT_ID="${CAPY_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-}}"
 # macOS: Python Functions workers fork after ObjC is loaded → crash unless disabled.
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY="${OBJC_DISABLE_INITIALIZE_FORK_SAFETY:-YES}"
 # Prefer env proxy lookup over macOS _scproxy (segfaults in gunicorn children).
@@ -101,7 +115,19 @@ if [[ "${CAPY_PHOENIX_FLAG}" =~ ^(1|true|yes|on)$ ]]; then
   fi
 fi
 
-echo "Emulators: Auth :9099 · Functions :5001 · UI http://127.0.0.1:4000"
+CLOUDRUN_PORT="${CLOUDRUN_PORT:-8080}"
+if lsof -iTCP:"${CLOUDRUN_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Cloud Run (MCP + Live Voice) already on :${CLOUDRUN_PORT}"
+else
+  echo "Starting Cloud Run (MCP + Live Voice) → http://0.0.0.0:${CLOUDRUN_PORT}"
+  (
+    cd "$FUNCTIONS_DIR"
+    exec "$VENV/bin/uvicorn" cloudrun.app:app --host 0.0.0.0 --port "${CLOUDRUN_PORT}"
+  ) >/tmp/capy-cloudrun.log 2>&1 &
+  CLOUDRUN_PID=$!
+fi
+
+echo "Emulators: Auth :9099 · Functions :5001 · CloudRun :${CLOUDRUN_PORT} · UI http://127.0.0.1:4000"
 echo "Phoenix:   http://127.0.0.1:6006  (project ${PHOENIX_PROJECT_NAME:-capy-harness})"
 echo "Xcode scheme → capy Local  (rebuild app after run.sh if on a physical device)"
 exec npx -y firebase-tools@latest emulators:start --only auth,functions

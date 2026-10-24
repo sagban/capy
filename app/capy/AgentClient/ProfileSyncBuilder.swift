@@ -38,6 +38,7 @@ enum ProfileSyncBuilder {
             diets: prefs.filter { $0.kind == .diet }.map(\.value),
             assistanceLevel: settings?.assistanceLevel.rawValue ?? AssistanceLevel.fullAssist.rawValue,
             responseStyle: settings?.responseStyle.rawValue ?? ResponseStyle.balanced.rawValue,
+            voiceName: settings?.voiceName.rawValue ?? CapyVoice.puck.rawValue,
             longTermMemory: ltm
         )
     }

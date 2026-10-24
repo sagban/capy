@@ -38,6 +38,18 @@ enum CapyThreadService {
         return try JSONDecoder().decode(GetThreadResponseDTO.self, from: data)
     }
 
+    static func resetThread(threadId: String = defaultThreadId) async throws -> GetThreadResponseDTO {
+        let result = try await AgentClient.shared.callCallable(
+            "patch_thread",
+            payload: [
+                "threadId": threadId,
+                "reset": true,
+            ]
+        )
+        let data = try JSONSerialization.data(withJSONObject: result)
+        return try JSONDecoder().decode(GetThreadResponseDTO.self, from: data)
+    }
+
     static func noteDayRollover(
         previousDayKey: String,
         mealCount: Int,

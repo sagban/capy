@@ -90,8 +90,7 @@ struct LibraryTabView: View {
             .navigationTitle("Library")
             .searchable(text: $searchText, prompt: "Search library")
             .toolbar {
-                SettingsToolbarButton()
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         editingItem = nil
                         editorKind = kindFilter
@@ -100,6 +99,13 @@ struct LibraryTabView: View {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel("Add library item")
+
+                    NavigationLink {
+                        SettingsRootView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $showEditor, onDismiss: { editingItem = nil }) {

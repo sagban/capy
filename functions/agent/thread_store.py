@@ -373,6 +373,40 @@ def append_assistant_turn(
     return _thread_view_after_mutation(uid, thread_id, conv)
 
 
+def _purge_messages(uid: str, thread_id: str) -> None:
+    """Delete the message archive in batches. Firestore batches cap at 500 writes."""
+    from agent.user_store import get_db
+
+    coll = _messages(uid, thread_id)
+    db = get_db()
+    stalled_on = None
+    while True:
+        docs = list(coll.limit(400).stream())
+        if not docs:
+            return
+        head = getattr(docs[0], "id", None) or docs[0].reference.id
+        if head == stalled_on:
+            raise RuntimeError("message purge made no progress")
+        stalled_on = head
+        batch = db.batch()
+        for doc in docs:
+            batch.delete(doc.reference)
+        batch.commit()
+
+
+def reset_thread(uid: str, thread_id: str = DEFAULT_THREAD_ID) -> dict[str, Any]:
+    """Delete every archived message and restore an empty thread document."""
+    _purge_messages(uid, thread_id)
+    payload = default_thread_dict(thread_id)
+    _threads(uid).document(thread_id).set(payload)
+    conversation = _conversation_from_doc(payload, thread_id)
+    return {
+        "conversation": _conversation_api_dict(conversation),
+        "messages": [],
+        "pageInfo": {"hasMore": False, "nextCursor": None},
+    }
+
+
 def note_day_rollover(
     uid: str,
     thread_id: str,

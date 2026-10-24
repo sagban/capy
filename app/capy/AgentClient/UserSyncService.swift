@@ -107,6 +107,27 @@ final class UserSyncService {
         }
     }
 
+    /// Replace the local diary with Firestore. Queued logs and deletes stay until they flush.
+    func pullDiary(into modelContext: ModelContext) async {
+        guard isNetworkReachable else { return }
+        guard Auth.auth().currentUser != nil else { return }
+        await flushPending()
+        do {
+            let raw = try await AgentClient.shared.callCallable(
+                "list_diary",
+                payload: ["includeDeleted": true]
+            )
+            let data = try JSONSerialization.data(withJSONObject: raw)
+            let response = try JSONDecoder().decode(ListDiaryResponseDTO.self, from: data)
+            let pending = await ServerSyncQueue.shared.pendingMealGuards()
+            DiarySyncBuilder.mergeRemote(response.meals, preserving: pending, into: modelContext)
+        } catch {
+            #if DEBUG
+            print("[UserSyncService] list_diary failed: \(error)")
+            #endif
+        }
+    }
+
     func flushPending() async {
         guard isNetworkReachable else { return }
         guard Auth.auth().currentUser != nil else { return }

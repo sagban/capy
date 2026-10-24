@@ -1,4 +1,4 @@
-"""Thin LangGraph: prepare → llm → tools, looping until the model replies or the cap."""
+"""Thin LangGraph: prepare → one tool loop → format → respond."""
 
 from __future__ import annotations
 
@@ -11,12 +11,10 @@ from agent.harness.checkpointer import get_checkpointer, reset_checkpointer
 from agent.harness.memory.episodic import thread_id as conversation_thread_id
 from schemas import request_from_dict
 from agent.turn import (
-    MAX_TOOL_ROUNDS,
-    call_model,
     finalize,
     format_reply,
     prepare,
-    run_environment,
+    run_agent,
     unavailable,
 )
 
@@ -43,23 +41,10 @@ def prepare_node(state: GraphState) -> GraphState:
         return out
 
 
-def llm_node(state: GraphState) -> GraphState:
-    with phoenix_tracing.chain_span("llm") as span:
-        out = call_model(dict(state))
-        phoenix_tracing.set_output(
-            span,
-            {"calls": [c.get("name") for c in (out.get("calls") or [])]},
-        )
-        return out
-
-
-def environment_node(state: GraphState) -> GraphState:
-    calls = list(state.get("calls") or [])
-    tool_names = [str(c.get("name") or "?").strip() or "?" for c in calls]
-    # Phoenix: show tool name(s) instead of the opaque graph node label.
-    span_name = "+".join(tool_names) if tool_names else "environment"
-    with phoenix_tracing.chain_span(span_name) as span:
-        out = run_environment(dict(state))
+def agent_node(state: GraphState) -> GraphState:
+    with phoenix_tracing.chain_span("agent") as span:
+        out = run_agent(dict(state))
+        tool_names = [str(step.get("name") or "") for step in (out.get("tool_trace") or [])]
         outcome = out.get("outcome") or {}
         summary = {
             "tools": tool_names,
@@ -99,38 +84,25 @@ def respond_node(state: GraphState) -> GraphState:
     return finalize(dict(state))
 
 
-def _after_llm(state: GraphState) -> str:
+def _after_agent(state: GraphState) -> str:
     outcome = state.get("outcome") or {}
     if "agent_unavailable" in (outcome.get("warnings") or []):
         return "respond"
-    if state.get("calls") and int(state.get("rounds") or 0) < MAX_TOOL_ROUNDS:
-        return "environment"
     return "format"
-
-
-def _after_environment(state: GraphState) -> str:
-    del state
-    return "llm"
 
 
 def build_graph():
     graph = StateGraph(GraphState)
     graph.add_node("prepare", prepare_node)
-    graph.add_node("llm", llm_node)
-    graph.add_node("environment", environment_node)
+    graph.add_node("agent", agent_node)
     graph.add_node("format", format_node)
     graph.add_node("respond", respond_node)
     graph.add_edge(START, "prepare")
-    graph.add_edge("prepare", "llm")
+    graph.add_edge("prepare", "agent")
     graph.add_conditional_edges(
-        "llm",
-        _after_llm,
-        {"environment": "environment", "format": "format", "respond": "respond"},
-    )
-    graph.add_conditional_edges(
-        "environment",
-        _after_environment,
-        {"llm": "llm", "format": "format"},
+        "agent",
+        _after_agent,
+        {"format": "format", "respond": "respond"},
     )
     graph.add_edge("format", "respond")
     graph.add_edge("respond", END)

@@ -4,7 +4,7 @@ import FirebaseAuth
 
 struct CapyTabView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.scenePhase) private var scenePhase
+    @Environment(AuthManager.self) private var auth
     @Query(sort: \DailyTarget.effectiveDate, order: .reverse) private var targets: [DailyTarget]
     @Query private var entries: [MealEntry]
     @Query private var settings: [AppSettings]
@@ -24,6 +24,11 @@ struct CapyTabView: View {
     @State private var isLoadingThread = false
     @State private var lastUtterance = ""
     @State private var speech = SpeechInputController()
+    @State private var liveVoice = LiveVoiceClient()
+    @State private var showLiveVoice = false
+    @State private var liveUserBubbleId: String?
+    @State private var liveAssistantBubbleId: String?
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var talkFocused: Bool
     @State private var showMemory = false
     @State private var didLoadThread = false
@@ -31,8 +36,17 @@ struct CapyTabView: View {
     @State private var hasMoreHistory = false
     @State private var isLoadingOlder = false
     @State private var stickToBottom = true
+    @State private var scrollToMessageId: String?
+    @State private var showChatInfo = false
     @AppStorage("capy.lastConversationDayKey") private var lastConversationDayKey = ""
-    @AppStorage("capy.eveningCheckInDayKey") private var eveningCheckInDayKey = ""
+
+    private var stars: StarredMessagesStore { .shared }
+
+    /// Local transcript key. The server still uses `default`; Firestore is already per account.
+    private var localThreadId: String {
+        guard let uid = auth.user?.uid, !uid.isEmpty else { return "" }
+        return ChatTranscriptStore.storageKey(uid: uid)
+    }
 
     private var todayKey: String { DayKey.make() }
 
@@ -61,10 +75,6 @@ struct CapyTabView: View {
         }
     }
 
-    private var remaining: MacroTotals {
-        MacroTotals.remaining(target: target, eaten: eaten)
-    }
-
     private var canSend: Bool {
         !isSending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -78,24 +88,26 @@ struct CapyTabView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
                             if hasMoreHistory || isLoadingOlder {
-                                Group {
+                                Button {
+                                    Task { await loadOlderMessages() }
+                                } label: {
                                     if isLoadingOlder {
                                         CapyInlineLoader(label: "Loading earlier…")
                                     } else {
-                                        Text("Load earlier")
+                                        Text("Earlier messages")
                                             .font(.caption)
                                             .foregroundStyle(Color.capy.textSecondary)
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 8)
                                     }
                                 }
-                                .onAppear { Task { await loadOlderMessages() } }
+                                .buttonStyle(.plain)
+                                .disabled(isLoadingOlder)
                             }
                             if messages.isEmpty, !isLoadingThread { starterPrompts }
                             ForEach(messages) { message in
                                 chatBubble(message)
                                     .id(message.id)
-                                    .capyAppear()
                             }
                             if isSending {
                                 HStack {
@@ -130,6 +142,14 @@ struct CapyTabView: View {
                             proxy.scrollTo(messages.last?.id, anchor: .bottom)
                         }
                     }
+                    .onChange(of: scrollToMessageId) { _, id in
+                        guard let id else { return }
+                        stickToBottom = false
+                        withAnimation(.easeOut(duration: 0.22)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
+                        scrollToMessageId = nil
+                    }
                 }
 
                 if isLoadingThread {
@@ -161,13 +181,18 @@ struct CapyTabView: View {
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Image("CapyAvatar")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.capy.accentSoft, lineWidth: 1.5))
-                        .accessibilityLabel("Capy")
+                    Button {
+                        showChatInfo = true
+                    } label: {
+                        Image("CapyAvatar")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.capy.accentSoft, lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Chat info")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -191,14 +216,49 @@ struct CapyTabView: View {
             .sheet(isPresented: $showMemory) {
                 MemorySheetView()
             }
+            .sheet(isPresented: $showChatInfo) {
+                CapyConversationInfoView(
+                    loadedMessageIds: Set(messages.map(\.id)),
+                    onJump: { id in
+                        scrollToMessageId = id
+                        showChatInfo = false
+                    },
+                    onReset: { try await resetConversation() }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .fullScreenCover(isPresented: $showLiveVoice, onDismiss: {
+                liveVoice.stop()
+                liveUserBubbleId = nil
+                liveAssistantBubbleId = nil
+            }) {
+                CapyLiveVoiceSheet(
+                    client: liveVoice,
+                    onEnd: {
+                        showLiveVoice = false
+                    }
+                )
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase != .active, showLiveVoice {
+                    showLiveVoice = false
+                }
+            }
             .task {
+                stars.useAccount(auth.user?.uid)
+                ChatTranscriptStore.discardLegacyUnscoped(in: modelContext)
                 MealTypeCatalog.seedIfNeeded(in: modelContext)
                 await loadThreadFromServerIfNeeded()
                 handleDayRolloverIfNeeded()
-                maybeEveningCheckIn()
             }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { maybeEveningCheckIn() }
+            .onChange(of: auth.user?.uid) { _, uid in
+                stars.useAccount(uid)
+                messages = []
+                historyCursor = nil
+                hasMoreHistory = false
+                didLoadThread = false
+                Task { await loadThreadFromServerIfNeeded() }
             }
             .onChange(of: speech.transcript) { _, newValue in
                 guard speech.isRecording, !newValue.isEmpty else { return }
@@ -212,6 +272,9 @@ struct CapyTabView: View {
             }
             .onDisappear {
                 speech.stop()
+                if showLiveVoice {
+                    showLiveVoice = false
+                }
             }
             .confirmationDialog(
                 "Delete this entry?",
@@ -277,12 +340,41 @@ struct CapyTabView: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
+    /// Headings and list marks become plain lines. Inline marks such as **bold** still render.
+    private func chatMarkdown(_ raw: String) -> String {
+        raw.components(separatedBy: "\n").map { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#") {
+                let title = trimmed.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces)
+                if !title.isEmpty { return "**\(title)**" }
+            }
+            if trimmed.hasPrefix("* ") || trimmed.hasPrefix("- ") {
+                let indent = line.prefix(while: { $0 == " " || $0 == "\t" })
+                return "\(indent)• \(trimmed.dropFirst(2))"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
+    private func bubbleLabel(_ message: ChatBubble) -> Text {
+        if message.role == .capy,
+           let rich = try? AttributedString(
+               markdown: chatMarkdown(message.text),
+               options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+           ) {
+            return Text(rich)
+        }
+        return Text(message.text)
+    }
+
     private func chatBubble(_ message: ChatBubble) -> some View {
         HStack {
             if message.role == .user { Spacer(minLength: 48) }
             VStack(alignment: .leading, spacing: 8) {
                 if !message.text.isEmpty {
-                    Text(message.text)
+                    bubbleLabel(message)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(
@@ -290,6 +382,14 @@ struct CapyTabView: View {
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                         )
                         .foregroundStyle(message.role == .user ? Color.white : Color.capy.textPrimary)
+                        .overlay(alignment: .topTrailing) {
+                            if stars.isStarred(message.id) {
+                                Image(systemName: "star.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.capy.budgetFat)
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
                 }
                 if message.role == .error {
                     Button("Retry") { retryLast() }
@@ -302,6 +402,15 @@ struct CapyTabView: View {
                 }
             }
             if message.role != .user { Spacer(minLength: 48) }
+        }
+        .contextMenu {
+            if message.role != .error, !message.text.isEmpty {
+                Button {
+                    stars.toggle(id: message.id, role: message.role, text: message.text)
+                } label: {
+                    Label(stars.isStarred(message.id) ? "Unstar" : "Star", systemImage: "star")
+                }
+            }
         }
     }
 
@@ -341,6 +450,17 @@ struct CapyTabView: View {
                 }
                 .accessibilityLabel(speech.isRecording ? "Stop listening" : "Speak to Capy")
                 .transition(.scale.combined(with: .opacity))
+
+                Button {
+                    startLiveVoice()
+                } label: {
+                    Image(systemName: "waveform.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(Color.capy.accent)
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Live voice mode")
+                .transition(.scale.combined(with: .opacity))
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: canSend)
@@ -369,20 +489,63 @@ struct CapyTabView: View {
     @MainActor
     private func loadThreadFromServerIfNeeded() async {
         guard !didLoadThread else { return }
+        guard !localThreadId.isEmpty else {
+            messages = []
+            return
+        }
         didLoadThread = true
+        if messages.isEmpty {
+            let cached = ChatTranscriptStore.all(
+                threadId: localThreadId,
+                in: modelContext
+            )
+            if !cached.isEmpty {
+                messages = cached
+                stickToBottom = true
+            }
+        }
         guard Auth.auth().currentUser != nil else { return }
-        isLoadingThread = true
+        if messages.isEmpty { isLoadingThread = true }
         defer { isLoadingThread = false }
         do {
-            let page = try await CapyThreadService.fetchThread()
-            withAnimation(.easeOut(duration: 0.25)) {
-                applyThreadPage(page, replacing: true)
-            }
+            try await syncTranscriptFromServer()
         } catch {
             #if DEBUG
             print("[CapyTabView] get_thread failed: \(error)")
             #endif
         }
+    }
+
+    /// Walk the archive into SwiftData, then show the whole saved transcript. The view stays on the newest message.
+    private func syncTranscriptFromServer() async throws {
+        let threadId = localThreadId
+        var cursor: String?
+        var hasMore = false
+        for _ in 0..<40 {
+            let page = try await CapyThreadService.fetchThread(limit: 50, cursor: cursor)
+            isLoadingThread = false
+            ChatTranscriptStore.upsert(messages: page.messages, threadId: threadId, in: modelContext)
+            if cursor == nil {
+                ChatTranscriptStore.absorbOptimisticDuplicates(
+                    matching: page.messages,
+                    threadId: threadId,
+                    in: modelContext
+                )
+            }
+            reloadTranscriptFromStore()
+            hasMore = page.pageInfo.hasMore
+            historyCursor = hasMore ? page.pageInfo.nextCursor : nil
+            hasMoreHistory = hasMore
+            guard hasMore, let next = page.pageInfo.nextCursor, !next.isEmpty, next != cursor else { break }
+            cursor = next
+        }
+    }
+
+    private func reloadTranscriptFromStore() {
+        messages = ChatTranscriptStore.all(
+            threadId: localThreadId,
+            in: modelContext
+        )
     }
 
     private func stampManualLogBubble(reply: String) {
@@ -394,39 +557,51 @@ struct CapyTabView: View {
                 text: last.text.isEmpty ? reply : last.text,
                 manualLog: true
             )
+            remember(messages[index])
         } else {
-            messages.append(ChatBubble(role: .capy, text: reply, manualLog: true))
+            let bubble = ChatBubble(role: .capy, text: reply, manualLog: true)
+            messages.append(bubble)
+            remember(bubble)
         }
     }
 
     @MainActor
     private func loadOlderMessages() async {
-        guard hasMoreHistory, !isLoadingOlder, let cursor = historyCursor else { return }
+        guard hasMoreHistory, !isLoadingOlder else { return }
         isLoadingOlder = true
         defer { isLoadingOlder = false }
-        do {
-            let page = try await CapyThreadService.fetchThread(cursor: cursor)
-            prependThreadPage(page)
-        } catch {
-            #if DEBUG
-            print("[CapyTabView] load older failed: \(error)")
-            #endif
+        if let cursor = historyCursor {
+            do {
+                let page = try await CapyThreadService.fetchThread(cursor: cursor)
+                prependThreadPage(page)
+                return
+            } catch {
+                #if DEBUG
+                print("[CapyTabView] load older failed: \(error)")
+                #endif
+            }
         }
+        prependLocalOlder()
     }
 
-    private func applyThreadPage(_ page: GetThreadResponseDTO, replacing: Bool) {
-        let bubbles = CapyThreadService.chatBubbles(from: page.messages)
-        if replacing {
-            messages = bubbles
-            stickToBottom = true
-        } else if !bubbles.isEmpty {
-            messages = bubbles
-        }
+    private func applyThreadPage(_ page: GetThreadResponseDTO) {
+        let threadId = localThreadId
+        let pageIds = Set(page.messages.map(\.messageId))
+        let showingOlder = messages.contains { !pageIds.contains($0.id) }
+        ChatTranscriptStore.upsert(messages: page.messages, threadId: threadId, in: modelContext)
+        ChatTranscriptStore.absorbOptimisticDuplicates(matching: page.messages, threadId: threadId, in: modelContext)
+        reloadTranscriptFromStore()
+        stickToBottom = true
+        // A latest-page reply still reports hasMore when the archive is longer than that page.
+        // Leave the flag alone once older messages are already on screen.
+        guard !showingOlder else { return }
         historyCursor = page.pageInfo.nextCursor
         hasMoreHistory = page.pageInfo.hasMore
     }
 
     private func prependThreadPage(_ page: GetThreadResponseDTO) {
+        let threadId = localThreadId
+        ChatTranscriptStore.upsert(messages: page.messages, threadId: threadId, in: modelContext)
         let older = CapyThreadService.chatBubbles(from: page.messages)
         guard !older.isEmpty else {
             historyCursor = page.pageInfo.nextCursor
@@ -434,11 +609,35 @@ struct CapyTabView: View {
             return
         }
         stickToBottom = false
-        var seen = Set(messages.map(\.serverMessageId))
-        let fresh = older.filter { seen.insert($0.serverMessageId).inserted }
-        messages = fresh + messages
+        reloadTranscriptFromStore()
         historyCursor = page.pageInfo.nextCursor
         hasMoreHistory = page.pageInfo.hasMore
+    }
+
+    private func prependLocalOlder() {
+        guard let oldest = messages.first?.id else {
+            hasMoreHistory = false
+            return
+        }
+        let page = ChatTranscriptStore.older(
+            before: oldest,
+            threadId: localThreadId,
+            limit: CapyThreadService.defaultPageLimit,
+            in: modelContext
+        )
+        guard !page.bubbles.isEmpty else {
+            hasMoreHistory = historyCursor != nil
+            return
+        }
+        stickToBottom = false
+        var seen = Set(messages.map(\.id))
+        let fresh = page.bubbles.filter { seen.insert($0.id).inserted }
+        messages = fresh + messages
+        hasMoreHistory = page.hasMore
+    }
+
+    private func remember(_ bubble: ChatBubble) {
+        ChatTranscriptStore.upsert(bubble, threadId: localThreadId, in: modelContext)
     }
 
     private func applyInterpretThread(_ response: InterpretMealResponseDTO) {
@@ -448,7 +647,7 @@ struct CapyTabView: View {
                 messages: pageMessages,
                 pageInfo: response.pageInfo ?? ThreadPageInfoDTO()
             )
-            applyThreadPage(page, replacing: true)
+            applyThreadPage(page)
             return
         }
         if let conversation = response.conversation, !conversation.recentTurns.isEmpty {
@@ -477,32 +676,111 @@ struct CapyTabView: View {
         lastConversationDayKey = today
     }
 
-    /// Unprompted evening check-in (Guided / Full Assist only). Quiet never speaks first.
-    private func maybeEveningCheckIn() {
-        let level = settings.first?.assistanceLevel ?? .fullAssist
-        guard DialPolicy.allowsEveningCheckIn(level) else { return }
-        guard DialPolicy.allowsUnpromptedMessages(level) else { return }
-        guard eveningCheckInDayKey != todayKey else { return }
-
-        let hour = settings.first?.guidedCheckInHour ?? 18
-        let minute = settings.first?.guidedCheckInMinute ?? 0
-        let now = Calendar.current.dateComponents([.hour, .minute], from: .now)
-        let nowMinutes = (now.hour ?? 0) * 60 + (now.minute ?? 0)
-        let gate = hour * 60 + minute
-        guard nowMinutes >= gate else { return }
-
-        let left = Int(remaining.calories)
-        let text = left > 0
-            ? "anything left to log? \(left) cal left."
-            : "day’s budget is used — log a correction if something changed."
-        messages.append(ChatBubble(role: .capy, text: text))
-        Task { try? await CapyThreadService.appendAssistant(text) }
-        eveningCheckInDayKey = todayKey
+    @MainActor
+    private func resetConversation() async throws {
+        _ = try await CapyThreadService.resetThread()
+        messages = []
+        historyCursor = nil
+        hasMoreHistory = false
+        stickToBottom = true
+        stars.clear()
+        ChatTranscriptStore.clear(threadId: localThreadId, in: modelContext)
     }
 
     private func dismissTalkKeyboard() {
         talkFocused = false
         Keyboard.dismiss()
+    }
+
+    private func startLiveVoice() {
+        speech.stop()
+        dismissTalkKeyboard()
+        liveUserBubbleId = nil
+        liveAssistantBubbleId = nil
+
+        liveVoice.onUserTranscript = { text, isFinal in
+            applyLiveTranscript(role: .user, text: text, isFinal: isFinal)
+        }
+        liveVoice.onAssistantTranscript = { text, isFinal in
+            applyLiveTranscript(role: .capy, text: text, isFinal: isFinal)
+        }
+        liveVoice.onOutcome = { response in
+            handleLiveOutcome(response)
+        }
+
+        showLiveVoice = true
+        let day = todayKey
+        let voice = (settings.first?.voiceName ?? .puck).rawValue
+        let snapshot = InterpretMealRequestDTO.librarySnapshot(from: libraryItems)
+        Task {
+            await UserSyncService.shared.flushPending()
+            await liveVoice.start(dayKey: day, voiceName: voice, libraryContext: snapshot)
+        }
+    }
+
+    private func applyLiveTranscript(role: ChatBubble.Role, text: String, isFinal: Bool) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        stickToBottom = true
+
+        switch role {
+        case .user:
+            if let id = liveUserBubbleId, let index = messages.firstIndex(where: { $0.id == id }) {
+                messages[index] = ChatBubble(serverMessageId: id, role: .user, text: trimmed)
+                if isFinal {
+                    remember(messages[index])
+                    liveUserBubbleId = nil
+                }
+            } else {
+                let id = UUID().uuidString
+                let bubble = ChatBubble(serverMessageId: id, role: .user, text: trimmed)
+                messages.append(bubble)
+                if isFinal {
+                    remember(bubble)
+                } else {
+                    liveUserBubbleId = id
+                }
+            }
+        case .capy:
+            if let id = liveAssistantBubbleId, let index = messages.firstIndex(where: { $0.id == id }) {
+                messages[index] = ChatBubble(serverMessageId: id, role: .capy, text: trimmed)
+                if isFinal {
+                    remember(messages[index])
+                    liveAssistantBubbleId = nil
+                }
+            } else {
+                let id = UUID().uuidString
+                let bubble = ChatBubble(serverMessageId: id, role: .capy, text: trimmed)
+                messages.append(bubble)
+                if isFinal {
+                    remember(bubble)
+                } else {
+                    liveAssistantBubbleId = id
+                }
+            }
+        case .error:
+            break
+        }
+    }
+
+    private func handleLiveOutcome(_ response: InterpretMealResponseDTO) {
+        liveUserBubbleId = nil
+        liveAssistantBubbleId = nil
+
+        if let proposals = response.memoryProposals, !proposals.isEmpty {
+            LongTermMemoryStore.apply(proposals: proposals, in: modelContext)
+            UserSyncService.shared.scheduleProfileSync(in: modelContext)
+        }
+        let reply = response.assistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let manual = response.pendingAction?.payload.manualLog == true
+        applyInterpretThread(response)
+        if manual {
+            stampManualLogBubble(reply: reply)
+        }
+        if response.pendingAction != nil {
+            showLiveVoice = false
+        }
+        handleStructuredResponse(response)
     }
 
     private func send() {
@@ -514,7 +792,9 @@ struct CapyTabView: View {
         draft = ""
         lastUtterance = text
         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-            messages.append(ChatBubble(role: .user, text: text))
+            let bubble = ChatBubble(role: .user, text: text)
+            messages.append(bubble)
+            remember(bubble)
             isSending = true
         }
         Task { await interpret(utterance: text) }
@@ -562,13 +842,13 @@ struct CapyTabView: View {
                 stampManualLogBubble(reply: reply)
             }
             if response.messages == nil, response.conversation == nil, !reply.isEmpty || manual {
-                messages.append(
-                    ChatBubble(
-                        role: .capy,
-                        text: reply,
-                        manualLog: manual
-                    )
+                let bubble = ChatBubble(
+                    role: .capy,
+                    text: reply,
+                    manualLog: manual
                 )
+                messages.append(bubble)
+                remember(bubble)
             }
             handleStructuredResponse(response)
             if !showed {
@@ -701,7 +981,9 @@ struct CapyTabView: View {
         showConfirm = false
         pendingLines = []
         pendingCorrectionOp = nil
-        messages.append(ChatBubble(role: .capy, text: reply))
+        let bubble = ChatBubble(role: .capy, text: reply)
+        messages.append(bubble)
+        remember(bubble)
         Task {
             try? await CapyThreadService.appendAssistant(reply, clearWorkingMemory: true)
         }
@@ -728,7 +1010,9 @@ struct CapyTabView: View {
     private func finishDeleteConfirm(reply: String) {
         showDeleteConfirm = false
         pendingDelete = nil
-        messages.append(ChatBubble(role: .capy, text: reply))
+        let bubble = ChatBubble(role: .capy, text: reply)
+        messages.append(bubble)
+        remember(bubble)
         Task {
             try? await CapyThreadService.appendAssistant(reply, clearWorkingMemory: true)
         }

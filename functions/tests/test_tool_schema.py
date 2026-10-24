@@ -19,8 +19,12 @@ def test_log_meal_write_rejects_missing_per100g():
     raise AssertionError("a log item without per100g should be rejected")
 
 
+def _params(name: str) -> dict:
+    return _by_name(name)["parameters_json_schema"]
+
+
 def test_write_food_entry_is_one_entry():
-    params = _by_name("write_food_entry")["parameters"]
+    params = _params("write_food_entry")
     assert "items" not in params["properties"]
     assert "kind" in params.get("required", [])
     assert "name" in params.get("required", [])
@@ -28,14 +32,21 @@ def test_write_food_entry_is_one_entry():
     assert "per100g" in params.get("required", [])
 
 
-def test_gemini_schema_does_not_keep_json_schema_title_metadata():
-    params = _by_name("search_catalog")["parameters"]
-    assert "title" not in params
-    assert "query" in params["properties"]
+def test_declarations_use_json_schema():
+    from google.genai import types
+
+    quantity = _params("portion_to_grams")["properties"]["quantity"]
+    assert quantity.get("exclusiveMinimum") == 0
+    for spec in TOOL_DECLARATIONS:
+        types.FunctionDeclaration(
+            name=spec["name"],
+            description=spec["description"],
+            parameters_json_schema=spec["parameters_json_schema"],
+        )
 
 
 def test_delete_meal_requires_entry_id():
-    params = _by_name("delete_food_entry")["parameters"]
+    params = _params("delete_food_entry")
     assert "entry_id" in params["properties"]
     assert "entry_id" in params.get("required", [])
     assert "day_key" in params.get("required", [])
@@ -61,6 +72,6 @@ def test_orchestrators_are_gone():
 
 
 def test_search_library_does_not_ask_the_model_for_rows():
-    params = _by_name("search_library")["parameters"]
+    params = _params("search_library")
     assert "items" not in params["properties"]
     assert "query" in params["properties"]

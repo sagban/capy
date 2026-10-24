@@ -8,8 +8,9 @@ The system prompt is `functions/agent/harness/prompts/`. The harness builds it a
 
 ```text
 functions/agent/
-  graph.py            # prepare → llm ⇄ environment → format → respond
-  turn.py             # those nodes
+  graph.py            # prepare → tool loop → format → respond
+  turn.py             # one in-process Gemini conversation, then format and respond
+  live_session.py     # Vertex Gemini Live session over /v1/live WebSocket
   tools/              # shared stateless tools and the Gemini registry
   llm/                # Gemini call. The harness passes the prompt in.
   thread_store.py     # conversation thread
@@ -38,23 +39,22 @@ Firebase callables in `main.py` are the iOS edge. Tools and those callables both
 ## Graph
 
 ```text
-START → prepare → llm
-llm --tool calls, under the cap--> environment → llm
-llm --text, or cap hit--> format → respond → END
-llm --infra failure twice--> respond
+START → prepare → tool loop → format → respond → END
+tool loop --infra failure twice--> respond
 ```
+
+The tool loop is one Gemini conversation inside `turn.py`. It starts with the system prompt, recent chat, this user message, and the tool declarations. Gemini either replies or calls tools. The harness runs those calls and appends Gemini's own message, then the tool outputs, to that same conversation. It calls Gemini again until the reply is text or twelve tool rounds have run. A thirteenth tool call is dropped.
 
 | Node | Where | What it does |
 |------|--------|----------------|
 | prepare | `turn.py` | Validate the request, build the memory pack, clear the previous turn's calls and outcome. |
-| llm | `llm/model.py` | One Gemini call with the shared tools and Google Search grounding. Tool results from this turn go back as function responses. Bad arguments retry inside this step (max 2). |
-| environment | `execute.py` | Run the calls. `diets.py` marks diet and allergy conflicts on hits. `policy.py` stages the first in-app write. `outcomes.py` builds the client outcome. |
+| tool loop | `turn.py` | One conversation in `llm/model.py`. `execute.py` runs the calls the model chose. `diets.py` marks diet and allergy conflicts on hits. `policy.py` stages the first in-app write. `outcomes.py` builds the client outcome. Bad arguments retry inside the loop (max 2) and are not executed. |
 | format | `format.py` | Use the model's prose when it sent some. Otherwise build a short line from tool facts. |
 | respond | `turn.py` | `normalize_outcome()`. Infra failure is `warnings: ["agent_unavailable"]` and an empty message. |
 
 `thread_id` is `{firebase_uid}:{conversation.threadId}` (default `default`). Tests use `MemorySaver`. Production checkpoints live in Firestore `agentGraphCheckpoints` (clients denied). Diary and remaining macros arrive fresh on each request.
 
-The model may run twelve tool rounds. After each round it reads the function responses. A thirteenth tool call is dropped and the turn replies.
+The model may run twelve tool rounds on that one conversation. After each round it reads the function responses. A thirteenth tool call is dropped and the turn replies.
 
 ## Shared tools
 
@@ -79,7 +79,8 @@ A log is search, then `portion_to_grams`, then one `write_food_entry`. One call 
 
 - **Memory.** `save_memory.py` adds a `memoryProposals` entry when the utterance starts with "remember" or "forget". `format_reply` attaches it. The client applies it. There is no confirm step for memory.
 - **MCP.** `functions/cloudrun/` is the Cloud Run app. `cloudrun/mcp/host.py` exposes the four lookups, `portion_to_grams`, `get_diary`, `write_food_entry`, `delete_food_entry`, `patch_profile`, and the library tools. See [mcp-tools.md](mcp-tools.md). The external agent calls those tools. `write_food_entry` and `delete_food_entry` on MCP write immediately. Direct lookups return the source hits with no `conflict` field. `interpret_meal` is the iPhone callable and is not an MCP tool.
-- **Callables.** `log_meal`, `delete_meal`, profile, library, and barcode callables are the iPhone edge. They call `user_api`, the same bottom the tools use. See [api-contracts.md](api-contracts.md).
+- **Voice (`/v1/live`).** `functions/cloudrun/app.py` mounts `WS /v1/live` handled by `functions/agent/live_session.py`. It opens a Vertex Gemini Live session (`VERTEX_GEMINI_LIVE_MODEL`), seeds `turn_prompt` and `TOOL_DECLARATIONS` (without Google Search grounding), runs tool calls through `run_calls` and the confirm gate, and saves completed turns with `persist_after_interpret`. `interpret_meal` is unchanged.
+- **Callables.** `log_meal`, `delete_meal`, `list_diary`, profile, library, and barcode callables are the iPhone edge. They call `user_api`, the same bottom the tools use. See [api-contracts.md](api-contracts.md).
 - **Ranker.** `tools/search/food_search.py` scores a pool for offline evals. The agent does not call it.
 
 ## Outcomes

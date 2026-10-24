@@ -101,21 +101,21 @@ struct OnboardingView: View {
             chipStep(
                 title: "Any diet you follow?",
                 subtitle: "Optional — skip if none fit.",
-                options: PreferenceCatalog.diets,
+                options: PreferenceCatalog.Diet.allCases.map(\.title),
                 selection: $selectedDiets
             )
         case .likes:
             chipStep(
                 title: "What do you usually go for?",
                 subtitle: "Pick a few. You can change these later.",
-                options: PreferenceCatalog.likes,
+                options: PreferenceCatalog.Like.allCases.map(\.title),
                 selection: $selectedLikes
             )
         case .allergies:
             chipStep(
                 title: "Anything to avoid for allergies?",
                 subtitle: "We’ll keep these out of suggestions.",
-                options: PreferenceCatalog.allergies,
+                options: PreferenceCatalog.Allergy.allCases.map(\.title),
                 selection: $selectedAllergies
             )
         case .ready:

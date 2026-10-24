@@ -6,11 +6,13 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
 from firebase_admin import initialize_app
 
-from agent.auth import AuthError, exchange_firebase_for_access
+from agent.auth import AuthError, exchange_firebase_for_access, resolve_bearer_to_uid
+from agent.live_session import run_live_websocket
+from agent.request_context import current_uid
 from cloudrun.authenticate import register_authenticate
 from cloudrun.mcp import AuthMcpMiddleware, mcp, mcp_http_asgi
 
@@ -63,6 +65,38 @@ async def http_exchange_access_token(request: Request) -> JSONResponse:
         return JSONResponse(_callable_envelope(exchange_firebase_for_access(raw)))
     except AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def _bearer_from_websocket(ws: WebSocket) -> str | None:
+    auth = ws.headers.get("authorization") or ws.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    token = (ws.query_params.get("token") or "").strip()
+    return token or None
+
+
+@app.websocket("/v1/live")
+async def websocket_live(ws: WebSocket) -> None:
+    token = _bearer_from_websocket(ws)
+    if not token:
+        await ws.close(code=4401, reason="Sign in required.")
+        return
+    try:
+        uid = resolve_bearer_to_uid(token)
+    except AuthError as exc:
+        await ws.close(code=4401, reason=str(exc))
+        return
+
+    await ws.accept()
+    reset = current_uid.set(uid)
+    try:
+        await run_live_websocket(ws, uid=uid)
+    finally:
+        current_uid.reset(reset)
+        try:
+            await ws.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # Streamable HTTP (spec 2025-11-25): POST/GET /mcp/ with Authorization: Bearer.

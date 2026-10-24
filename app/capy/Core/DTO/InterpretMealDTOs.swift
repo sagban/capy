@@ -201,6 +201,7 @@ struct ThreadMessageDTO: Codable, Equatable, Sendable {
     var role: String
     var text: String
     var createdAt: String?
+    var seq: Int?
 }
 
 struct ThreadPageInfoDTO: Codable, Equatable, Sendable {

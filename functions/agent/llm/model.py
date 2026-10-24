@@ -1,4 +1,4 @@
-"""One Gemini turn with typed tools."""
+"""One Gemini conversation. Tests pop scripted replies instead of calling Vertex."""
 
 from __future__ import annotations
 
@@ -8,27 +8,38 @@ from typing import Any
 from agent.harness.mock_turn import pop_mock_turn
 
 
-def generate(
+class MockConversation:
+    """Scripted replies. Tool outputs are ignored because the next script does not read them."""
+
+    def complete(self) -> dict[str, Any]:
+        scripted = pop_mock_turn()
+        if scripted:
+            return scripted
+        return {"kind": "text", "text": ""}
+
+    def add_tool_results(self, results: list[dict[str, Any]]) -> None:
+        del results
+
+    def add_argument_error(self, message: str) -> None:
+        del message
+
+
+def open_conversation(
     system: str,
     user: str,
     history: list[dict[str, Any]],
     *,
     tools: list[dict[str, Any]],
-    tool_exchange: list[dict[str, Any]] | None = None,
     temperature: float,
-) -> dict[str, Any]:
+) -> Any:
     if os.environ.get("CAPY_MOCK_AGENT") == "1":
-        scripted = pop_mock_turn()
-        if scripted:
-            return scripted
-        return {"kind": "text", "text": ""}
-    from agent.llm.vertex import generate_with_tools
+        return MockConversation()
+    from agent.llm.vertex import ToolConversation
 
-    return generate_with_tools(
+    return ToolConversation(
         system=system,
         user_content=user,
         tool_declarations=tools,
         history=history,
-        tool_exchange=tool_exchange,
         temperature=temperature,
     )

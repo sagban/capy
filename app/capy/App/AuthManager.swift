@@ -21,6 +21,14 @@ final class AuthManager {
         user?.displayName ?? user?.email ?? "Signed in"
     }
     var email: String? { user?.email }
+    var photoURL: URL? { user?.photoURL }
+    var signInProvider: String {
+        switch user?.providerData.first?.providerID {
+        case "google.com": "Google"
+        case "password": "Email"
+        default: "Signed in"
+        }
+    }
 
     init() {
         user = Auth.auth().currentUser

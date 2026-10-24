@@ -1,5 +1,17 @@
 import Foundation
 
+struct PendingMealGuards: Equatable, Sendable {
+    var loggedEntryIds: Set<String>
+    var deletedEntryIds: Set<String>
+
+    static let empty = PendingMealGuards(loggedEntryIds: [], deletedEntryIds: [])
+
+    func protects(_ entryId: String) -> Bool {
+        let key = entryId.lowercased()
+        return loggedEntryIds.contains(key) || deletedEntryIds.contains(key)
+    }
+}
+
 /// Durable outbound queue (UserDefaults) for offline profile and meal writes.
 actor ServerSyncQueue {
     static let shared = ServerSyncQueue()
@@ -35,6 +47,23 @@ actor ServerSyncQueue {
 
     func dequeueAll() -> [PendingSyncOperation] {
         load()
+    }
+
+    /// Meal ids with a log or delete still waiting to reach the server.
+    func pendingMealGuards() -> PendingMealGuards {
+        var logged = Set<String>()
+        var deleted = Set<String>()
+        for operation in load() {
+            if let entryId = operation.logMeal?.entryId.trimmingCharacters(in: .whitespacesAndNewlines),
+               !entryId.isEmpty {
+                logged.insert(entryId.lowercased())
+            }
+            if let entryId = operation.deleteMeal?.entryId.trimmingCharacters(in: .whitespacesAndNewlines),
+               !entryId.isEmpty {
+                deleted.insert(entryId.lowercased())
+            }
+        }
+        return PendingMealGuards(loggedEntryIds: logged, deletedEntryIds: deleted)
     }
 
     func remove(ids: Set<UUID>) {

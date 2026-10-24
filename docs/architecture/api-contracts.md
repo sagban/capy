@@ -32,7 +32,7 @@ Firestore layout and profile fields: [user-store.md](user-store.md).
 
 ### `patch_profile` (callable)
 
-Authenticated merge into `users/{uid}`. Allowed keys: `timezone`, `dailyTarget`, `mealPlan`, `likes`, `dislikes`, `allergies`, `diets`, `assistanceLevel`, `responseStyle`, `longTermMemory`.
+Authenticated merge into `users/{uid}`. Allowed keys: `timezone`, `dailyTarget`, `mealPlan`, `likes`, `dislikes`, `allergies`, `diets`, `assistanceLevel`, `responseStyle`, `voiceName`, `longTermMemory`.
 
 ### `log_meal` (callable)
 
@@ -112,6 +112,20 @@ Soft-deletes `users/{uid}/library/{id}` (`deleted: true`). Returns `{ "id" }`.
 ```
 
 → `{ "items": [ /* library docs */ ] }` for client restore/merge.
+
+### `list_diary` (callable)
+
+```json
+{ "includeDeleted": true }
+```
+
+→ `{ "meals": [ /* users/{uid}/days/{dayKey}/entries docs */ ] }`
+
+Each meal is one diary document (`entryId`, `dayKey`, `mealSlot`, `confirmed`, `deleted`, `items[]` with `name`, `grams`, `per100g`, `createdAt`). The iPhone replaces its local diary with this list. `includeDeleted: false` omits soft-deleted and unconfirmed rows. The Food Log asks with `includeDeleted: true` so a server delete removes the local row. Meals still queued for `log_meal` or `delete_meal` stay local until that flush finishes.
+
+### `get_thread` / `patch_thread` (callable)
+
+Page shape, cursors, and the `reset: true` delete live in [user-store.md](user-store.md#get_thread-contract). `get_thread` reads one page of `users/{uid}/threads/{threadId}/messages`. `patch_thread` appends assistant text, notes a day rollover, or resets that thread.
 
 ### `lookup_barcode` (callable)
 
@@ -322,7 +336,7 @@ Google Search grounding is on the same Vertex `generate_content` call. It is not
 
 The in-app wrapper marks a hit that breaks a diet or names an allergy with `conflict` (`diet` or `allergy`) and still returns it. The first in-app `write_food_entry` or `delete_food_entry` stages a confirm and does not write. MCP writes on the call. Displayed totals are computed on the iPhone from confirmed grams and per-100g.
 
-Firebase callables in `main.py` are the iOS edge. `interpret_meal` enters the graph. `log_meal`, `delete_meal`, barcode, and library callables call `user_api` directly. Tools call those same `user_api` functions. They do not call the callable handlers.
+Firebase callables in `main.py` are the iOS edge. `interpret_meal` enters the graph. `log_meal`, `delete_meal`, `list_diary`, barcode, and library callables call `user_api` directly. Tools call those same `user_api` functions. They do not call the callable handlers.
 
 ### Search hit shape
 
@@ -331,6 +345,28 @@ Firebase callables in `main.py` are the iOS edge. `interpret_meal` enters the gr
 `lookup_barcode` returns the Open Food Facts dict: a hit with `found: true`, or `{ "found": false }`.
 
 The tool functions return the source's hits. Inside the iPhone `interpret_meal` callable, a conflicting hit stays in that list with `conflict` set to `diet` or `allergy`. MCP lookups return the source result with no `conflict` field.
+
+## `WS /v1/live` (Cloud Run voice session)
+
+Foreground voice mode on the Capy tab connects to `WS /v1/live` on the Cloud Run service (`functions/cloudrun/app.py` → `functions/agent/live_session.py`). Auth is `Authorization: Bearer <Firebase ID token>` (or `?token=`) on the WebSocket upgrade.
+
+The server loads the user context (`resolve_interpret_request` + `build_pack`), opens a Vertex Gemini Live session (`VERTEX_GEMINI_LIVE_MODEL`) with `turn_prompt` and `TOOL_DECLARATIONS` (no Google Search grounding on the Live session), and bridges audio, tool calls (`run_calls` + confirm gate), and transcripts (`persist_after_interpret`). `interpret_meal` is unchanged for text chat.
+
+### Client → server messages
+
+- `{ "type": "start", "threadId": "default", "dayKey": "YYYY-MM-DD", "voiceName"?: "Puck" | "Charon" | "Kore" | "Fenrir" | "Aoede" | "Leda" | "Orus" | "Zephyr", "timezone"?: "America/Chicago", "useServerContext"?: true, "libraryContext"?: [...] }`
+- Binary WebSocket frames: 16-bit signed PCM, 16 kHz, mono (`audio/pcm;rate=16000`).
+- `{ "type": "stop" }` to end the stream.
+
+### Server → client messages
+
+- `{ "type": "ready", "threadId": "default", "dayKey": "YYYY-MM-DD" }`
+- Binary WebSocket frames: 16-bit signed PCM, 24 kHz, mono from the model.
+- `{ "type": "user_transcript", "text": "...", "final": false | true }`
+- `{ "type": "assistant_transcript", "text": "...", "final": false | true }`
+- `{ "type": "interrupted" }` — client clears queued audio playback on barge-in.
+- `{ "type": "outcome", ...InterpretMealResponse }` — emitted when a voice turn completes; carries `pendingAction`, `suggestionOptions`, `memoryProposals`, `warnings`, and the updated thread view (`conversation`, `messages`, `pageInfo`).
+- `{ "type": "error", "message": "human-safe string" }`
 
 ## Error shape
 

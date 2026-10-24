@@ -15,11 +15,13 @@ from agent.thread_store import (
     get_thread_view,
     normalize_thread_id,
     note_day_rollover,
+    reset_thread,
 )
 from agent.tools.search.open_food_facts import lookup_barcode as off_lookup_barcode
 from agent.tools.search.open_food_facts import normalize_gtin
 from agent.user_store import delete_entry as store_delete_entry
 from agent.user_store import delete_library_item as store_delete_library_item
+from agent.user_store import list_diary_meals as store_list_diary_meals
 from agent.user_store import list_library_items as store_list_library_items
 from agent.user_store import log_meal as store_log_meal
 from agent.user_store import patch_profile as store_patch_profile
@@ -167,6 +169,9 @@ def handle_get_thread(req: https_fn.CallableRequest) -> dict[str, Any]:
 
 def patch_thread_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
     thread_id = normalize_thread_id(raw.get("threadId"))
+    if raw.get("reset") is True:
+        logger.info("patch_thread reset uid=%s thread=%s", uid, thread_id)
+        return reset_thread(uid, thread_id)
     conversation = None
     rollover = raw.get("dayRollover")
     if isinstance(rollover, dict):
@@ -185,7 +190,7 @@ def patch_thread_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
     if conversation is None:
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            message="assistantText or dayRollover is required.",
+            message="assistantText, dayRollover, or reset is required.",
         )
     return conversation
 
@@ -276,6 +281,19 @@ def handle_delete_library_item(req: https_fn.CallableRequest) -> dict[str, Any]:
     uid = _uid(req)
     raw = req.data if isinstance(req.data, dict) else {}
     return delete_library_item_for_uid(uid, raw)
+
+
+def list_diary_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:
+    include_deleted = bool(raw.get("includeDeleted"))
+    meals = store_list_diary_meals(uid, include_deleted=include_deleted)
+    logger.info("list_diary uid=%s meals=%s include_deleted=%s", uid, len(meals), include_deleted)
+    return {"meals": meals}
+
+
+def handle_list_diary(req: https_fn.CallableRequest) -> dict[str, Any]:
+    uid = _uid(req)
+    raw = req.data if isinstance(req.data, dict) else {}
+    return list_diary_for_uid(uid, raw)
 
 
 def list_library_for_uid(uid: str, raw: dict[str, Any]) -> dict[str, Any]:

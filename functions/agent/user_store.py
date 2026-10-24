@@ -43,8 +43,17 @@ def _users(uid: str):
     return get_db().collection("users").document(uid)
 
 
+def _days(uid: str):
+    return _users(uid).collection("days")
+
+
 def _entries(uid: str, day_key: str):
-    return _users(uid).collection("days").document(day_key).collection("entries")
+    return _days(uid).document(day_key).collection("entries")
+
+
+def _day_keys(uid: str) -> list[str]:
+    """Day ids under users/{uid}/days, including parents that only exist via entries."""
+    return sorted(ref.id for ref in _days(uid).list_documents() if ref.id)
 
 
 def _library(uid: str):
@@ -67,6 +76,7 @@ def default_profile_dict() -> dict[str, Any]:
         "diets": [],
         "assistanceLevel": "fullAssist",
         "responseStyle": "balanced",
+        "voiceName": "Puck",
         "longTermMemory": [],
         "updatedAt": datetime.utcnow().isoformat() + "Z",
     }
@@ -116,6 +126,7 @@ def patch_profile(uid: str, patch: dict[str, Any]) -> dict[str, Any]:
         "diets",
         "assistanceLevel",
         "responseStyle",
+        "voiceName",
         "longTermMemory",
     }
     normalized = normalize_firebase_payload(patch)
@@ -460,6 +471,38 @@ def delete_library_item(
             {"libraryItemId": item_id, "createdAt": now}
         )
     return {"id": item_id}
+
+
+def list_diary_meals(uid: str, *, include_deleted: bool = False) -> list[dict[str, Any]]:
+    """Meal docs under users/{uid}/days/{dayKey}/entries for client restore.
+
+    Hidden rows (soft-deleted or unconfirmed) are omitted unless include_deleted.
+    """
+    rows: list[dict[str, Any]] = []
+    for day_key in _day_keys(uid):
+        for snap in _entries(uid, day_key).stream():
+            data = normalize_firebase_payload(snap.to_dict() or {})
+            if not isinstance(data, dict):
+                continue
+            deleted = bool(data.get("deleted"))
+            confirmed = bool(data.get("confirmed", True))
+            if not include_deleted and (deleted or not confirmed):
+                continue
+            items = data.get("items")
+            data["entryId"] = str(data.get("entryId") or snap.id)
+            data["dayKey"] = str(data.get("dayKey") or day_key)
+            data["deleted"] = deleted
+            data["confirmed"] = confirmed
+            data["items"] = items if isinstance(items, list) else []
+            rows.append(data)
+    rows.sort(
+        key=lambda row: (
+            str(row.get("dayKey") or ""),
+            str(row.get("createdAt") or ""),
+            str(row.get("entryId") or ""),
+        )
+    )
+    return rows
 
 
 def list_library_items(uid: str, *, include_deleted: bool = False) -> list[dict[str, Any]]:

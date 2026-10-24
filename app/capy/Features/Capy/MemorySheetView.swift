@@ -64,7 +64,7 @@ struct MemorySheetView: View {
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .foregroundStyle(Color.capy.accent)
             } footer: {
-                Text("Food prefs & diets are in Settings.")
+                Text("Food preferences are in Settings.")
             }
         }
         .navigationTitle("Memory")

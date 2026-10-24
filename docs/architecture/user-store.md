@@ -66,7 +66,7 @@ Missing doc → defaults applied on read (`agent/user_store.py`).
 }
 ```
 
-Every user/assistant turn is appended here (`seq` monotonic per thread). Nothing is deleted from the archive.
+Every user/assistant turn is appended here (`seq` monotonic per thread). `patch_thread` with `reset: true` deletes this subcollection and writes a fresh thread document (`summary` empty, `recentTurns` empty, `nextSeq` 0).
 
 `interpret_meal` / `patch_thread` archive new turns, update the rolling window + `workingMemory`, and return a **page** of messages for the client.
 
@@ -106,6 +106,20 @@ Every user/assistant turn is appended here (`seq` monotonic per thread). Nothing
 - `conversation.recentTurns` is empty on the wire. The harness reads `recentTurns` from the thread document.
 
 `interpret_meal` (with `useServerContext`) adds the same `messages` + `pageInfo` shape after a successful turn (latest window).
+
+### `patch_thread` contract
+
+**Request** (callable `patch_thread`). One of these fields is required:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `threadId` | string | Default `"default"` |
+| `assistantText` | string | Append one assistant message and return the latest page |
+| `dayRollover` | object | `{ "previousDayKey", "mealCount" }` folded into `summary` |
+| `clearWorkingMemory` | bool | With `assistantText`, drop `workingMemory` |
+| `reset` | bool | Must be JSON `true`. Deletes the message archive and clears the rolling window. Other fields on the same request are ignored |
+
+**Response** matches `get_thread`: `conversation`, `messages`, `pageInfo`. After `reset: true`, `messages` is empty and `pageInfo.hasMore` is false.
 
 ## Diary entry document
 
@@ -167,9 +181,10 @@ Harness context expands each item to a `DiaryEntry` row.
 | `upsert_library_item` | Create/replace library doc; idempotent via `clientMutationId` |
 | `delete_library_item` | Soft-delete library doc; idempotent via `clientMutationId` |
 | `list_library` | List library docs (`includeDeleted` optional) for client merge |
+| `list_diary` | List diary meal docs (`includeDeleted` optional) so the iPhone restores from Firestore |
 | `interpret_meal` | Pass `useServerContext: true` to load diary/profile/thread/library from Firestore; returns updated `conversation` |
 | `get_thread` | Read `users/{uid}/threads/{threadId}` |
-| `patch_thread` | Append assistant text and/or day-rollover summary note |
+| `patch_thread` | Append assistant text, note a day rollover, or `reset: true` to delete the chat |
 
 ## Context loader
 
@@ -184,6 +199,7 @@ Named dishes live in `recipes/{recipeId}` on database `capy`, not in `foodCorpus
 ## iOS client
 
 - `UserSyncService` queues `log_meal` / `delete_meal` / `patch_profile` / `upsert_library_item` / `delete_library_item` (UserDefaults), flushes on network + app active.
+- Diary pull: `list_diary` on launch, foreground, and when Food Log is selected. Firestore replaces the local diary. A meal still queued for `log_meal` or `delete_meal` stays until that flush finishes.
 - Library pull: `list_library` on launch / foreground; merge into SwiftData; push local-only rows.
-- `InterpretMealRequestDTO.serverContext` sends the utterance, day, `useServerContext`, and a compact `libraryContext`. Chat history syncs through `get_thread`, the `interpret_meal` `conversation`, and `patch_thread`.
+- `InterpretMealRequestDTO.serverContext` sends the utterance, day, `useServerContext`, and a compact `libraryContext`. Chat history syncs through `get_thread`, the `interpret_meal` `conversation`, and `patch_thread`. The phone keeps that transcript in SwiftData (`ChatMessageRecord`), keyed by the signed-in account, and shows that account's saved messages, including older pages, then refreshes them from `get_thread`. Starred messages stay on the phone in `UserDefaults` for that same account; reset clears that account's list and its local transcript.
 - Profile push: Settings, goals, meal types, memory sheet, and app launch.

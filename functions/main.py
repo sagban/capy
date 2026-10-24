@@ -50,6 +50,7 @@ from user_api import (
     handle_delete_library_item,
     handle_delete_meal,
     handle_get_thread,
+    handle_list_diary,
     handle_list_library,
     handle_log_meal,
     handle_lookup_barcode,
@@ -201,6 +202,17 @@ def delete_library_item(req: https_fn.CallableRequest) -> dict:
 def list_library(req: https_fn.CallableRequest) -> dict:
     """List users/{uid}/library for client restore / merge."""
     return handle_list_library(req)
+
+
+@https_fn.on_call(
+    region="us-central1",
+    memory=options.MemoryOption.MB_256,
+    timeout_sec=60,
+    secrets=[API_ACCESS_TOKEN_SECRET],
+)
+def list_diary(req: https_fn.CallableRequest) -> dict:
+    """List users/{uid}/days/*/entries so the iPhone can restore the diary."""
+    return handle_list_diary(req)
 
 
 # Warm Phoenix/Arrow (curl) during gunicorn preload on macOS so fork children

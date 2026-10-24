@@ -34,6 +34,21 @@ enum AppEnvironment: String, Sendable {
         }
     }
 
+    /// Cloud Run WebSocket for Gemini Live voice (`/v1/live`).
+    var liveVoiceWebSocketURL: URL {
+        switch self {
+        case .local:
+            return URL(string: "ws://\(Self.emulatorHost):8080/v1/live")!
+        case .prod:
+            var components = URLComponents(url: hostedMCPURL, resolvingAgainstBaseURL: false)
+            let scheme = (components?.scheme ?? "https").lowercased()
+            components?.scheme = (scheme == "http" || scheme == "ws") ? "ws" : "wss"
+            components?.path = "/v1/live"
+            components?.query = nil
+            return components?.url ?? URL(string: "wss://missing-mcp-url.invalid/v1/live")!
+        }
+    }
+
     /// Full callable URL for raw clients (SDK preferred in prod; local uses HTTP).
     var interpretMealURL: URL {
         switch self {
@@ -100,6 +115,7 @@ enum EnvironmentConfig {
     static var baseURL: URL { environment.baseURL }
     static var interpretMealURL: URL { environment.interpretMealURL }
     static var hostedMCPURL: URL { environment.hostedMCPURL }
+    static var liveVoiceWebSocketURL: URL { environment.liveVoiceWebSocketURL }
 
     static func makeFunctions() -> Functions { environment.makeFunctions() }
 

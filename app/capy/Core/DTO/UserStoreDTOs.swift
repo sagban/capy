@@ -47,6 +47,7 @@ struct PatchProfilePayload: Codable, Equatable, Sendable {
     var diets: [String]?
     var assistanceLevel: String?
     var responseStyle: String?
+    var voiceName: String?
     var longTermMemory: [LongTermMemoryNoteDTO]?
 }
 
@@ -82,4 +83,30 @@ struct LibraryItemSyncDTO: Codable, Equatable, Sendable {
 
 struct ListLibraryResponseDTO: Codable, Equatable, Sendable {
     var items: [LibraryItemSyncDTO]
+}
+
+// MARK: - list_diary
+
+struct DiaryMealItemSyncDTO: Codable, Equatable, Sendable {
+    var name: String
+    var grams: Double
+    var foodId: String? = nil
+    var source: String? = nil
+    var per100g: MacroTotals? = nil
+    var ingredientFamily: String? = nil
+}
+
+struct DiaryMealSyncDTO: Codable, Equatable, Sendable {
+    var entryId: String
+    var dayKey: String
+    var mealSlot: String? = nil
+    var confirmed: Bool? = nil
+    var deleted: Bool? = nil
+    var items: [DiaryMealItemSyncDTO]
+    var createdAt: String? = nil
+    var updatedAt: String? = nil
+}
+
+struct ListDiaryResponseDTO: Codable, Equatable, Sendable {
+    var meals: [DiaryMealSyncDTO]
 }

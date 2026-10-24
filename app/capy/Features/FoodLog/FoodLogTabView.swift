@@ -115,8 +115,8 @@ struct FoodLogTabView: View {
                 }
             }
             .sheet(isPresented: $showInsights) {
-                InsightsSheet(entries: entries, targetCalories: target.calories)
-                    .presentationDetents([.medium])
+                InsightsSheet(entries: entries, target: target)
+                    .presentationDetents([.medium, .large])
             }
             .sheet(item: $logSheet) { request in
                 ManualLogSheet(initialDay: selectedDay, initialMealSlot: request.mealSlot)
@@ -225,42 +225,164 @@ private struct LogSheetRequest: Identifiable {
 }
 
 struct InsightsSheet: View {
+    @Environment(\.unitPreferences) private var units
+
     let entries: [MealEntry]
-    let targetCalories: Double
+    let target: MacroTotals
 
-    private var last7Keys: [String] {
-        (0..<7).compactMap { offset in
+    private var week: [InsightDay] {
+        (0..<7).reversed().compactMap { offset in
             guard let day = Calendar.current.date(byAdding: .day, value: -offset, to: .now) else { return nil }
-            return DayKey.make(from: day)
+            let key = DayKey.make(from: day)
+            let logged = entries.filter { $0.dayKey == key && $0.confirmed }
+            let eaten = logged.reduce(MacroTotals.zero) { partial, entry in
+                MacroTotals(
+                    calories: partial.calories + entry.calories,
+                    proteinG: partial.proteinG + entry.proteinG,
+                    carbsG: partial.carbsG + entry.carbsG,
+                    fatG: partial.fatG + entry.fatG
+                )
+            }
+            let label = day.formatted(.dateTime.weekday(.narrow))
+            return InsightDay(key: key, label: label, eaten: eaten, meals: logged)
         }
     }
 
-    private var daysLogged: Int {
-        Set(entries.filter { last7Keys.contains($0.dayKey) && $0.confirmed }.map(\.dayKey)).count
+    private var loggedDays: [InsightDay] {
+        week.filter { $0.eaten.calories > 0 }
     }
 
-    private var weekAverage: Double {
-        let keys = last7Keys
-        let totals = keys.map { key in
-            entries.filter { $0.dayKey == key && $0.confirmed }.reduce(0) { $0 + $1.calories }
+    private var average: MacroTotals {
+        guard !loggedDays.isEmpty else { return .zero }
+        let count = Double(loggedDays.count)
+        let sum = loggedDays.reduce(MacroTotals.zero) { $0 + $1.eaten }
+        return MacroTotals(
+            calories: sum.calories / count,
+            proteinG: sum.proteinG / count,
+            carbsG: sum.carbsG / count,
+            fatG: sum.fatG / count
+        )
+    }
+
+    private var topFoods: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for day in week {
+            for entry in day.meals {
+                for item in entry.items {
+                    let name = ReadableFoodName.display(item.name)
+                    guard !name.isEmpty else { continue }
+                    counts[name, default: 0] += 1
+                }
+            }
         }
-        let logged = totals.filter { $0 > 0 }
-        guard !logged.isEmpty else { return 0 }
-        return logged.reduce(0, +) / Double(logged.count)
+        return counts.sorted { lhs, rhs in
+            if lhs.value == rhs.value { return lhs.key < rhs.key }
+            return lhs.value > rhs.value
+        }
+        .prefix(5)
+        .map { ($0.key, $0.value) }
+    }
+
+    private var slots: [(name: String, calories: Double)] {
+        var totals: [String: Double] = [:]
+        for day in week {
+            for entry in day.meals {
+                let name = (entry.mealSlot?.isEmpty == false) ? entry.mealSlot! : "Other"
+                totals[name, default: 0] += entry.calories
+            }
+        }
+        return totals.sorted { $0.value > $1.value }.map { ($0.key, $0.value) }
     }
 
     var body: some View {
         NavigationStack {
             List {
-                LabeledContent("Days logged (7d)", value: "\(daysLogged)")
-                LabeledContent("Avg calories on logged days", value: "\(Int(weekAverage.rounded()))")
-                LabeledContent("Daily target", value: "\(Int(targetCalories))")
-                Text("Full charts come later.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Section {
+                    WeekCalorieBars(days: week, target: target.calories)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                    LabeledContent("Days with a log", value: "\(loggedDays.count) of 7")
+                    LabeledContent("Avg energy", value: units.formattedEnergy(average.calories))
+                    LabeledContent("Target", value: units.formattedEnergy(target.calories))
+                } header: {
+                    Text("Last 7 days")
+                }
+
+                Section("Avg macros on logged days") {
+                    macroLine("Protein", grams: average.proteinG, target: target.proteinG, color: Color.capy.budgetProtein)
+                    macroLine("Carbs", grams: average.carbsG, target: target.carbsG, color: Color.capy.budgetCarbs)
+                    macroLine("Fat", grams: average.fatG, target: target.fatG, color: Color.capy.budgetFat)
+                }
+
+                Section("Foods") {
+                    if topFoods.isEmpty {
+                        Text("No foods logged in these 7 days.")
+                            .foregroundStyle(Color.capy.textSecondary)
+                    } else {
+                        ForEach(topFoods, id: \.name) { food in
+                            LabeledContent(food.name, value: "\(food.count)")
+                        }
+                    }
+                }
+
+                Section("By meal") {
+                    if slots.isEmpty {
+                        Text("No meals logged in these 7 days.")
+                            .foregroundStyle(Color.capy.textSecondary)
+                    } else {
+                        ForEach(slots, id: \.name) { slot in
+                            LabeledContent(slot.name, value: units.formattedEnergy(slot.calories))
+                        }
+                    }
+                }
             }
             .navigationTitle("Insights")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private func macroLine(_ title: String, grams: Double, target: Double, color: Color) -> some View {
+        LabeledContent {
+            Text("\(Int(grams.rounded())) / \(Int(target.rounded())) g")
+                .foregroundStyle(color)
+        } label: {
+            Text(title)
+        }
+    }
+}
+
+private struct InsightDay {
+    let key: String
+    let label: String
+    let eaten: MacroTotals
+    let meals: [MealEntry]
+}
+
+private struct WeekCalorieBars: View {
+    let days: [InsightDay]
+    let target: Double
+
+    var body: some View {
+        let peak = max(target, days.map(\.eaten.calories).max() ?? 0, 1)
+        HStack(alignment: .bottom, spacing: 8) {
+            ForEach(days, id: \.key) { day in
+                VStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(day.eaten.calories > target && target > 0 ? Color.capy.warning : Color.capy.budgetCalories)
+                        .frame(height: barHeight(day.eaten.calories, peak: peak))
+                    Text(day.label)
+                        .font(.caption2)
+                        .foregroundStyle(Color.capy.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(height: 148)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Calories for the last 7 days")
+    }
+
+    private func barHeight(_ calories: Double, peak: Double) -> CGFloat {
+        guard calories > 0 else { return 4 }
+        return max(8, 112 * calories / peak)
     }
 }

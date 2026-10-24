@@ -36,6 +36,7 @@ sed \
   -e "s|__FIRESTORE_DATABASE_ID__|${FIRESTORE_DATABASE_ID}|g" \
   -e "s|__VERTEX_LOCATION__|${GOOGLE_CLOUD_LOCATION}|g" \
   -e "s|__VERTEX_MODEL__|${VERTEX_GEMINI_MODEL}|g" \
+  -e "s|__VERTEX_LIVE_MODEL__|${VERTEX_GEMINI_LIVE_MODEL:-gemini-live-2.5-flash-native-audio}|g" \
   deploy/cloudrun-service.yaml > "$RENDERED"
 gcloud run services replace "$RENDERED" --region "$REGION" --project "$PROJECT"
 rm -f "$RENDERED"

@@ -37,6 +37,17 @@ def _bind(name: str, req: InterpretMealRequest, uid: str | None, arguments: dict
     return bound
 
 
+def _trace_step(name: str, arguments: Any, result: dict[str, Any]) -> dict[str, Any]:
+    return {"name": name, "arguments": arguments, "result": result}
+
+
+def _record_tool(name: str, arguments: Any, result: dict[str, Any]) -> None:
+    import phoenix_tracing
+
+    with phoenix_tracing.tool_span(name or "tool", arguments=arguments) as span:
+        phoenix_tracing.set_output(span, phoenix_tracing.tool_result_summary(name, result))
+
+
 def run_calls(
     req: InterpretMealRequest,
     calls: list[dict[str, Any]],
@@ -52,7 +63,8 @@ def run_calls(
         parsed = parse_tool_args(name, call.get("arguments") or {})
         if isinstance(parsed, str):
             result: dict[str, Any] = {"error": "bad_args", "message": parsed}
-            carried.append({"name": name, "arguments": call.get("arguments") or {}, "result": result})
+            _record_tool(name, call.get("arguments") or {}, result)
+            carried.append(_trace_step(name, call.get("arguments") or {}, result))
             continue
         spec, arguments = parsed
         gated = gate_write(name, arguments, req, uid)
@@ -67,6 +79,6 @@ def run_calls(
                     result = {"error": "bad_args", "message": str(exc)}
             if isinstance(result, dict):
                 result = annotate_lookup(name, result, req)
-            phoenix_tracing.set_output(span, {"tool": name})
-        carried.append({"name": name, "arguments": arguments, "result": result})
+            phoenix_tracing.set_output(span, phoenix_tracing.tool_result_summary(name, result))
+        carried.append(_trace_step(name, arguments, result))
     return carried, outcome_from_trace(req, carried)

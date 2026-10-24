@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.llm.model import generate
+from agent.llm.model import open_conversation
 from agent.harness.format import format_message
 from agent.harness.execute import run_calls
 from agent.harness.memory.assemble import build_pack
@@ -72,86 +72,89 @@ def _read_model(result: dict[str, Any]) -> dict[str, Any]:
     return {"kind": "text", "text": str(result.get("text") or "")}
 
 
-def call_model(state: dict[str, Any]) -> dict[str, Any]:
-    req = InterpretMealRequest.model_validate(state["req"])
-    context_pack = state.get("context_pack") or ""
+def _one_reply(convo: Any) -> dict[str, Any]:
+    """One model reply, with the same two tries for a transport error or bad arguments."""
     attempts = 0
     infra = 0
-    validation_error = ""
-    last_text = ""
     while attempts < 2:
         attempts += 1
-        packed = turn_prompt(
-            req,
-            context_pack,
-            validation_error=validation_error,
-            tool_trace=list(state.get("tool_trace") or []),
-        )
-        result = _read_model(generate(
-            packed["system"],
-            packed["user"],
-            packed["history"],
-            tools=TOOL_DECLARATIONS,
-            tool_exchange=packed["tool_exchange"],
-            temperature=packed["temperature"],
-        ))
+        result = _read_model(convo.complete())
         if result.get("kind") == "error":
             infra += 1
             if infra >= 2:
-                return {"outcome": unavailable(), "calls": [], "model_text": ""}
+                return {"stop": "unavailable"}
             continue
         if result.get("kind") == "bad_args":
-            last_text = str(result.get("text") or "")
+            text = str(result.get("text") or "")
             if attempts >= 2:
-                return {
-                    "calls": [],
-                    "model_text": last_text,
-                    "outcome": empty_chat_outcome(model_text=last_text),
-                }
-            validation_error = str(result.get("message") or "bad arguments")
+                return {"stop": "bad_args", "text": text}
+            convo.add_argument_error(str(result.get("message") or "bad arguments"))
             continue
-        previous = str(state.get("model_text") or "")
-        if result.get("kind") == "tool_calls":
-            text = str(result.get("text") or "") or previous
-            return {
-                "calls": list(result.get("calls") or []),
-                "model_text": text,
-            }
-        text = str(result.get("text") or "") or previous
-        existing = state.get("outcome") or {}
-        if existing.get("intent"):
-            return {"calls": [], "model_text": text}
-        return {
-            "calls": [],
-            "model_text": text,
-            "outcome": empty_chat_outcome(model_text=text),
-        }
-    return {"outcome": unavailable(), "calls": [], "model_text": ""}
+        return result
+    return {"stop": "unavailable"}
 
 
-def run_environment(state: dict[str, Any]) -> dict[str, Any]:
+def run_agent(state: dict[str, Any]) -> dict[str, Any]:
+    """One conversation. The model calls a tool or replies. The harness only runs that call."""
     req = InterpretMealRequest.model_validate(state["req"])
-    calls = list(state.get("calls") or [])
-    if not calls:
-        return {"outcome": empty_chat_outcome(model_text=str(state.get("model_text") or ""))}
-    try:
-        prior = list(state.get("tool_trace") or [])
-        trace, outcome = run_calls(
-            req,
-            calls,
-            uid=state.get("uid"),
-            trace=prior,
+    packed = turn_prompt(req, state.get("context_pack") or "")
+    convo = open_conversation(
+        packed["system"],
+        packed["user"],
+        packed["history"],
+        tools=TOOL_DECLARATIONS,
+        temperature=packed["temperature"],
+    )
+    trace: list[dict[str, Any]] = []
+    outcome: dict[str, Any] = {}
+    model_text = ""
+    rounds = 0
+    while True:
+        result = _one_reply(convo)
+        if result.get("stop") == "unavailable":
+            return {"outcome": unavailable(), "calls": [], "model_text": "", "tool_trace": trace, "rounds": rounds}
+        if result.get("stop") == "bad_args":
+            text = str(result.get("text") or "") or model_text
+            return {
+                "calls": [],
+                "model_text": text,
+                "outcome": empty_chat_outcome(model_text=text),
+                "tool_trace": trace,
+                "rounds": rounds,
+            }
+        text = str(result.get("text") or "") or model_text
+        if text:
+            model_text = text
+        if result.get("kind") != "tool_calls":
+            break
+        if rounds >= MAX_TOOL_ROUNDS:
+            break
+        calls = list(result.get("calls") or [])
+        try:
+            prior = len(trace)
+            trace, outcome = run_calls(req, calls, uid=state.get("uid"), trace=trace)
+            rounds += 1
+            for step in trace[prior:]:
+                step["round"] = rounds
+        except Exception:  # noqa: BLE001
+            return {
+                "outcome": empty_chat_outcome(model_text=model_text),
+                "calls": [],
+                "model_text": model_text,
+                "tool_trace": trace,
+                "rounds": rounds,
+            }
+        convo.add_tool_results(
+            [{"name": step.get("name"), "result": step.get("result")} for step in trace[prior:]]
         )
-        round_index = int(state.get("rounds") or 0) + 1
-        for step in trace[len(prior) :]:
-            step["round"] = round_index
-    except Exception as exc:  # noqa: BLE001
-        return {"outcome": empty_chat_outcome(model_text=str(state.get("model_text") or ""))}
+    if not outcome.get("intent"):
+        outcome = empty_chat_outcome(model_text=model_text)
     return {
-        "tool_trace": trace,
         "outcome": outcome,
-        "rounds": int(state.get("rounds") or 0) + 1,
+        "model_text": model_text,
+        "tool_trace": trace,
         "calls": [],
+        "rounds": rounds,
     }
 
 

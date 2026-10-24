@@ -223,8 +223,8 @@ final class LiveVoiceClient {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetoothHFP, .duckOthers]
+            mode: .videoChat,
+            options: [.defaultToSpeaker, .duckOthers]
         )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
         preferLoudspeaker()
@@ -254,9 +254,17 @@ final class LiveVoiceClient {
             audioEngine.attach(playerNode)
         }
         audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: outFormat)
+        audioEngine.mainMixerNode.outputVolume = 1
 
         let inputNode = audioEngine.inputNode
-        let hwFormat = inputNode.outputFormat(forBus: 0)
+        try? inputNode.setVoiceProcessingEnabled(true)
+        audioEngine.prepare()
+        var hwFormat = inputNode.outputFormat(forBus: 0)
+        if hwFormat.sampleRate == 0 || hwFormat.channelCount == 0 {
+            try? inputNode.setVoiceProcessingEnabled(false)
+            audioEngine.prepare()
+            hwFormat = inputNode.outputFormat(forBus: 0)
+        }
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: Self.inputSampleRate,
@@ -282,23 +290,21 @@ final class LiveVoiceClient {
 
         audioEngine.prepare()
         try audioEngine.start()
+        playerNode.volume = 1
         playerNode.play()
         isEngineRunning = true
         preferLoudspeaker()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            self?.preferLoudspeaker()
+        }
     }
 
-    /// Voice chat mode prefers the earpiece. Keep the loudspeaker unless headphones are connected.
+    /// Video chat prefers the loudspeaker. Re-apply it because starting the engine can fall back to the earpiece.
     private func preferLoudspeaker() {
         let session = AVAudioSession.sharedInstance()
-        let usingHeadphones = session.currentRoute.outputs.contains { port in
-            switch port.portType {
-            case .headphones, .headsetMic, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .airPlay, .carAudio, .usbAudio:
-                return true
-            default:
-                return false
-            }
-        }
-        guard !usingHeadphones else { return }
+        let wiredHeadphones = session.currentRoute.outputs.contains { $0.portType == .headphones }
+        guard !wiredHeadphones else { return }
         try? session.overrideOutputAudioPort(.speaker)
     }
 

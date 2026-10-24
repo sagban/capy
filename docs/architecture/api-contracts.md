@@ -350,12 +350,13 @@ The tool functions return the source's hits. Inside the iPhone `interpret_meal` 
 
 Foreground voice mode on the Capy tab connects to `WS /v1/live` on the Cloud Run service (`functions/cloudrun/app.py` → `functions/agent/live_session.py`). Auth is `Authorization: Bearer <Firebase ID token>` (or `?token=`) on the WebSocket upgrade.
 
-The server loads the user context (`resolve_interpret_request` + `build_pack`), opens a Vertex Gemini Live session (`VERTEX_GEMINI_LIVE_MODEL`) with `turn_prompt` and `TOOL_DECLARATIONS` (no Google Search grounding on the Live session), and bridges audio, tool calls (`run_calls` + confirm gate), and transcripts (`persist_after_interpret`). `interpret_meal` is unchanged for text chat.
+The server loads the user context (`resolve_interpret_request` + `build_pack`), opens a Vertex Gemini Live session (`VERTEX_GEMINI_LIVE_MODEL`) with `turn_prompt`, `TOOL_DECLARATIONS`, and Google Search grounding, and bridges audio, tool calls (`run_calls` + confirm gate), and transcripts (`persist_after_interpret`). If Live returns `google_search` as a function call, the server answers it with a grounded text completion on `VERTEX_GEMINI_MODEL`. `interpret_meal` is unchanged for text chat.
 
 ### Client → server messages
 
 - `{ "type": "start", "threadId": "default", "dayKey": "YYYY-MM-DD", "voiceName"?: "Puck" | "Charon" | "Kore" | "Fenrir" | "Aoede" | "Leda" | "Orus" | "Zephyr", "timezone"?: "America/Chicago", "useServerContext"?: true, "libraryContext"?: [...] }`
 - Binary WebSocket frames: 16-bit signed PCM, 16 kHz, mono (`audio/pcm;rate=16000`).
+- `{ "type": "barge" }` when the user speaks over Capy. The server forwards the following mic audio while the model is still talking, so Live can interrupt.
 - `{ "type": "stop" }` to end the stream.
 
 ### Server → client messages
@@ -364,7 +365,7 @@ The server loads the user context (`resolve_interpret_request` + `build_pack`), 
 - Binary WebSocket frames: 16-bit signed PCM, 24 kHz, mono from the model.
 - `{ "type": "user_transcript", "text": "...", "final": false | true }`
 - `{ "type": "assistant_transcript", "text": "...", "final": false | true }`
-- `{ "type": "interrupted" }` — client clears queued audio playback on barge-in.
+- `{ "type": "interrupted" }` — the model stopped. The client clears queued playback.
 - `{ "type": "outcome", ...InterpretMealResponse }` — emitted when a voice turn completes; carries `pendingAction`, `suggestionOptions`, `memoryProposals`, `warnings`, and the updated thread view (`conversation`, `messages`, `pageInfo`).
 - `{ "type": "error", "message": "human-safe string" }`
 

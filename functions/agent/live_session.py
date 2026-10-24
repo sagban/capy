@@ -19,7 +19,7 @@ from agent.harness.messaging import sanitize_assistant_message
 from agent.harness.outcomes import OutcomeError, normalize_outcome
 from agent.harness.prompts import turn_prompt
 from agent.harness.save_memory import proposals_for_utterance
-from agent.llm.vertex import _function_declaration, get_vertex_live_client
+from agent.llm.vertex import _function_declaration, get_vertex_live_client, grounded_answer
 from agent.thread_store import normalize_thread_id, persist_after_interpret
 from agent.tools.registry import TOOL_DECLARATIONS
 from agent.turn import empty_chat_outcome, unavailable
@@ -44,6 +44,29 @@ INPUT_AUDIO_MIME = "audio/pcm;rate=16000"
 
 def live_model() -> str:
     return (os.environ.get("VERTEX_GEMINI_LIVE_MODEL") or DEFAULT_LIVE_MODEL).strip()
+
+
+def mic_forward_allowed(state: dict[str, Any], now: float) -> bool:
+    """Drop speaker bleed while Capy is talking. A barge-in keeps the mic open."""
+    if state.get("user_has_floor"):
+        return True
+    if state.get("model_busy"):
+        return False
+    return now >= float(state.get("ignore_audio_until") or 0)
+
+
+def note_client_barge(state: dict[str, Any]) -> None:
+    state["user_has_floor"] = True
+    state["model_busy"] = False
+    state["ignore_audio_until"] = 0
+
+
+def _search_query(arguments: dict[str, Any]) -> str:
+    for key in ("query", "q", "text"):
+        value = arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 def normalize_voice_name(raw: str | None) -> str:
@@ -80,7 +103,8 @@ def build_live_connect_config(
                 function_declarations=[
                     _function_declaration(spec, types) for spec in tool_declarations
                 ]
-            )
+            ),
+            types.Tool(google_search=types.GoogleSearch()),
         ],
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
@@ -198,30 +222,47 @@ async def handle_tool_call(
         calls.append({"name": name, "arguments": args})
         call_ids.append(getattr(fc, "id", None))
 
-    prior = len(turn.trace)
-    turn.trace, turn.outcome = await asyncio.to_thread(
-        run_calls, req, calls, uid=uid, trace=turn.trace
-    )
-    new_steps = turn.trace[prior:]
+    results: list[dict[str, Any]] = [{} for _ in calls]
+    harness_index: list[int] = []
+    for index, call in enumerate(calls):
+        if call["name"] != "google_search":
+            harness_index.append(index)
+            continue
+        query = _search_query(call["arguments"])
+        results[index] = (
+            await asyncio.to_thread(grounded_answer, query) if query else {"error": "empty_query"}
+        )
 
-    wm_raw = turn.outcome.get("workingMemory")
     updated_req = req
-    if isinstance(wm_raw, dict):
-        try:
-            wm = WorkingMemory.model_validate(wm_raw)
-            conv = updated_req.conversation.model_copy(update={"workingMemory": wm})
-            updated_req = updated_req.model_copy(update={"conversation": conv})
-        except Exception:  # noqa: BLE001
-            pass
+    if harness_index:
+        prior = len(turn.trace)
+        harness_calls = [calls[index] for index in harness_index]
+        turn.trace, turn.outcome = await asyncio.to_thread(
+            run_calls, req, harness_calls, uid=uid, trace=turn.trace
+        )
+        new_steps = turn.trace[prior:]
+        for offset, index in enumerate(harness_index):
+            if offset >= len(new_steps):
+                results[index] = {"error": "missing_result"}
+                continue
+            result = new_steps[offset].get("result")
+            results[index] = result if isinstance(result, dict) else {"result": result}
+
+        wm_raw = turn.outcome.get("workingMemory")
+        if isinstance(wm_raw, dict):
+            try:
+                wm = WorkingMemory.model_validate(wm_raw)
+                conv = updated_req.conversation.model_copy(update={"workingMemory": wm})
+                updated_req = updated_req.model_copy(update={"conversation": conv})
+            except Exception:  # noqa: BLE001
+                pass
 
     responses: list[Any] = []
-    for idx, step in enumerate(new_steps):
-        cid = call_ids[idx] if idx < len(call_ids) else None
-        result = step.get("result")
-        payload = result if isinstance(result, dict) else {"result": result}
+    for index, call in enumerate(calls):
+        cid = call_ids[index] if index < len(call_ids) else None
         kwargs: dict[str, Any] = {
-            "name": str(step.get("name") or ""),
-            "response": payload,
+            "name": str(call.get("name") or ""),
+            "response": results[index],
         }
         if cid is not None:
             kwargs["id"] = cid
@@ -338,8 +379,7 @@ async def pump_live_session(
                 audio_bytes = message.get("bytes")
                 if audio_bytes:
                     now = asyncio.get_running_loop().time()
-                    ignore_until = state_holder.get("ignore_audio_until") or 0
-                    if state_holder.get("model_busy") or now < ignore_until:
+                    if not mic_forward_allowed(state_holder, now):
                         continue
                     await session.send_realtime_input(
                         audio=types.Blob(data=bytes(audio_bytes), mime_type=INPUT_AUDIO_MIME)
@@ -357,6 +397,9 @@ async def pump_live_session(
                 if not isinstance(payload, dict):
                     continue
                 kind = payload.get("type")
+                if kind == "barge":
+                    note_client_barge(state_holder)
+                    continue
                 if kind == "stop":
                     try:
                         await session.send_realtime_input(audio_stream_end=True)
@@ -388,6 +431,9 @@ async def pump_live_session(
                         continue
 
                     if getattr(sc, "interrupted", False):
+                        state_holder["model_busy"] = False
+                        state_holder["user_has_floor"] = True
+                        state_holder["ignore_audio_until"] = 0
                         await ws.send_json({"type": "interrupted"})
 
                     in_tr = getattr(sc, "input_transcription", None)
@@ -414,6 +460,7 @@ async def pump_live_session(
                     if getattr(sc, "turn_complete", False):
                         turn: LiveTurnState = state_holder["turn"]
                         state_holder["model_busy"] = False
+                        state_holder["user_has_floor"] = False
                         state_holder["ignore_audio_until"] = (
                             asyncio.get_running_loop().time() + 0.6
                         )

@@ -241,6 +241,59 @@ def _read_candidate(result: Any) -> tuple[list[dict[str, Any]], list[str], Any]:
         return [], [], None
 
 
+def grounded_answer(query: str) -> dict[str, Any]:
+    """One Google Search answer from the text model. Live uses this when search arrives as a function call."""
+    query = (query or "").strip()
+    if not query:
+        return {"error": "empty_query"}
+    try:
+        from google.genai import types
+
+        client = get_vertex_client()
+        result = client.models.generate_content(
+            model=_model(),
+            contents=query,
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "Answer from Google Search in a few sentences. "
+                    "Include the numbers and the source URL when the page has them."
+                ),
+                temperature=0.2,
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("vertex_search_failed: %s: %s", type(exc).__name__, exc)
+        return {"error": "search_unavailable"}
+    text = ""
+    try:
+        text = (result.text or "").strip()
+    except Exception:  # noqa: BLE001
+        text = ""
+    urls = _grounding_urls(result)
+    payload: dict[str, Any] = {"text": text or "No search result."}
+    if urls:
+        payload["urls"] = urls[:3]
+    return payload
+
+
+def _grounding_urls(result: Any) -> list[str]:
+    urls: list[str] = []
+    try:
+        candidates = getattr(result, "candidates", None) or []
+        if not candidates:
+            return urls
+        meta = getattr(candidates[0], "grounding_metadata", None)
+        for chunk in getattr(meta, "grounding_chunks", None) or []:
+            web = getattr(chunk, "web", None)
+            uri = getattr(web, "uri", None) if web is not None else None
+            if uri and uri not in urls:
+                urls.append(str(uri))
+    except Exception:  # noqa: BLE001
+        return urls
+    return urls
+
+
 def generate_text(
     *,
     system: str,

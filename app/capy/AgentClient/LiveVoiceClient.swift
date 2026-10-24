@@ -34,9 +34,17 @@ final class LiveVoiceClient {
     private var pendingBuffers = 0
     /// Speaker audio is still in the room. Keep the mic closed so Capy does not answer itself.
     private var uplinkBlockedUntil = Date.distantPast
+    /// User spoke over Capy. Drop audio already in flight until the model confirms it stopped.
+    private var holdPlayback = false
+    private var bargeArmed = true
+    private var bargeHotFrames = 0
+    private var routeObserver: NSObjectProtocol?
 
     private static let inputSampleRate: Double = 16_000
     private static let outputSampleRate: Double = 24_000
+    /// Sustained speech, louder than speaker bleed through voice-chat echo cancellation.
+    private static let bargeRMS: Float = 0.06
+    private static let bargeFramesNeeded = 4
 
     var isActive: Bool {
         switch state {
@@ -57,6 +65,9 @@ final class LiveVoiceClient {
         userTranscript = ""
         assistantTranscript = ""
         isMuted = false
+        holdPlayback = false
+        bargeArmed = true
+        bargeHotFrames = 0
         state = .connecting
 
         let micAllowed = await requestMicAuth()
@@ -170,6 +181,8 @@ final class LiveVoiceClient {
                 state = .listening
             }
         case "interrupted":
+            holdPlayback = false
+            bargeHotFrames = 0
             clearPlaybackQueue()
             if isActive {
                 state = .listening
@@ -188,6 +201,7 @@ final class LiveVoiceClient {
             assistantTranscript = transcript
             onAssistantTranscript?(transcript, isFinal)
         case "outcome":
+            holdPlayback = false
             if let dto = try? JSONDecoder().decode(InterpretMealResponseDTO.self, from: data) {
                 onOutcome?(dto)
             }
@@ -210,9 +224,21 @@ final class LiveVoiceClient {
         try session.setCategory(
             .playAndRecord,
             mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetooth, .duckOthers]
+            options: [.defaultToSpeaker, .allowBluetoothHFP, .duckOthers]
         )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
+        preferLoudspeaker()
+        if routeObserver == nil {
+            routeObserver = NotificationCenter.default.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.preferLoudspeaker()
+                }
+            }
+        }
 
         guard let outFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -248,9 +274,9 @@ final class LiveVoiceClient {
             guard let pcmData = Self.convertToPCM16k(buffer: buffer, converter: converter, targetFormat: targetFormat) else {
                 return
             }
+            let level = Self.rms(of: pcmData)
             Task { @MainActor [weak self] in
-                guard let self, self.uplinkOpen else { return }
-                self.webSocketTask?.send(.data(pcmData)) { _ in }
+                self?.handleMicFrame(pcmData, level: level)
             }
         }
 
@@ -258,6 +284,22 @@ final class LiveVoiceClient {
         try audioEngine.start()
         playerNode.play()
         isEngineRunning = true
+        preferLoudspeaker()
+    }
+
+    /// Voice chat mode prefers the earpiece. Keep the loudspeaker unless headphones are connected.
+    private func preferLoudspeaker() {
+        let session = AVAudioSession.sharedInstance()
+        let usingHeadphones = session.currentRoute.outputs.contains { port in
+            switch port.portType {
+            case .headphones, .headsetMic, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .airPlay, .carAudio, .usbAudio:
+                return true
+            default:
+                return false
+            }
+        }
+        guard !usingHeadphones else { return }
+        try? session.overrideOutputAudioPort(.speaker)
     }
 
     private func teardownAudioEngine() {
@@ -268,7 +310,13 @@ final class LiveVoiceClient {
             isEngineRunning = false
         }
         pendingBuffers = 0
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if let routeObserver {
+            NotificationCenter.default.removeObserver(routeObserver)
+            self.routeObserver = nil
+        }
+        let session = AVAudioSession.sharedInstance()
+        try? session.overrideOutputAudioPort(.none)
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func clearPlaybackQueue() {
@@ -278,11 +326,48 @@ final class LiveVoiceClient {
         playerNode.play()
     }
 
+    private func handleMicFrame(_ pcm: Data, level: Float) {
+        guard !isMuted else { return }
+        let capySpeaking: Bool
+        if case .speaking = state {
+            capySpeaking = true
+        } else {
+            capySpeaking = false
+        }
+        if capySpeaking {
+            if level >= Self.bargeRMS {
+                bargeHotFrames += 1
+            } else if bargeHotFrames > 0 {
+                bargeHotFrames -= 1
+            }
+            if bargeArmed, bargeHotFrames >= Self.bargeFramesNeeded {
+                beginBargeIn()
+            }
+        } else {
+            bargeHotFrames = 0
+        }
+        guard uplinkOpen else { return }
+        webSocketTask?.send(.data(pcm)) { _ in }
+    }
+
+    private func beginBargeIn() {
+        guard bargeArmed, isActive else { return }
+        bargeArmed = false
+        bargeHotFrames = 0
+        holdPlayback = true
+        clearPlaybackQueue()
+        uplinkBlockedUntil = .distantPast
+        state = .listening
+        webSocketTask?.send(.string(#"{"type":"barge"}"#)) { _ in }
+    }
+
     private func enqueuePlayback(pcm24kMonoInt16 data: Data) {
+        guard !holdPlayback else { return }
         guard isEngineRunning,
               let format = playbackFormat,
               data.count >= 2
         else { return }
+        bargeArmed = true
 
         let sampleCount = data.count / 2
         guard let buffer = AVAudioPCMBuffer(
@@ -318,6 +403,20 @@ final class LiveVoiceClient {
         guard !isMuted else { return false }
         guard case .listening = state else { return false }
         return Date() >= uplinkBlockedUntil
+    }
+
+    nonisolated private static func rms(of pcm: Data) -> Float {
+        let count = pcm.count / MemoryLayout<Int16>.size
+        guard count > 0 else { return 0 }
+        var sum: Float = 0
+        pcm.withUnsafeBytes { raw in
+            let samples = raw.bindMemory(to: Int16.self)
+            for sample in samples {
+                let value = Float(Int16(littleEndian: sample)) / 32768
+                sum += value * value
+            }
+        }
+        return sqrt(sum / Float(count))
     }
 
     nonisolated private static func convertToPCM16k(

@@ -101,6 +101,13 @@ def test_initial_turns_wait_for_live_audio():
     assert [turn.role for turn in turns] == ["user", "model"]
 
 
+def test_barge_opens_the_mic_while_capy_is_speaking():
+    state = {"model_busy": True, "ignore_audio_until": 10.0}
+    assert live_session.mic_forward_allowed(state, 1.0) is False
+    live_session.note_client_barge(state)
+    assert live_session.mic_forward_allowed(state, 1.0) is True
+
+
 def test_transcript_chunks_do_not_repeat():
     chunks: list[str] = []
     assert live_session._merge_transcript(chunks, "Hello") == "Hello"
@@ -356,4 +363,34 @@ def test_live_session_applies_voice_name_to_connect_config(monkeypatch: pytest.M
     assert len(captured_configs) == 1
     voice_cfg = captured_configs[0].speech_config.voice_config.prebuilt_voice_config
     assert voice_cfg.voice_name == "Fenrir"
+    assert any(getattr(tool, "google_search", None) is not None for tool in captured_configs[0].tools)
+
+
+def test_live_answers_google_search_function_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        live_session,
+        "grounded_answer",
+        lambda query: {"text": "A slice is about 280 kcal.", "urls": ["https://example.com/menu"]},
+    )
+
+    class _Session:
+        def __init__(self) -> None:
+            self.responses: list[list[types.FunctionResponse]] = []
+
+        async def send_tool_response(self, *, function_responses: list[types.FunctionResponse]) -> None:
+            self.responses.append(list(function_responses))
+
+    session = _Session()
+    tool_call = types.LiveServerToolCall(
+        function_calls=[
+            types.FunctionCall(id="s1", name="google_search", args={"query": "slice calories"})
+        ]
+    )
+    asyncio.run(
+        live_session.handle_tool_call(session, _sample_request(), "user-123", tool_call, live_session.LiveTurnState())
+    )
+
+    assert session.responses[0][0].name == "google_search"
+    assert session.responses[0][0].response["text"] == "A slice is about 280 kcal."
+    assert session.responses[0][0].response["urls"] == ["https://example.com/menu"]
 
